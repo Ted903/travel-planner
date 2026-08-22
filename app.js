@@ -143,14 +143,17 @@ function createTrip(){
  const g=id=>document.getElementById(id);
  const title=g('f_title').value.trim(), region=g('f_region').value, cur=g('f_cur').value,
   start=g('f_start').value, end=g('f_end').value,
-  mem=g('f_mem').value.trim(), budget=parseInt(String(g('f_budget').value).replace(/[^0-9]/g,''))||0;
+  mem=g('f_mem').value.trim();
+ const rows=document.getElementById('f_budrows');
+ const mb={}; let budget=0;
+ if(rows)rows.querySelectorAll('input').forEach(i=>{const v=parseInt(String(i.value).replace(/[^0-9]/g,''))||0;mb[i.dataset.n]=v;budget+=v});
  if(!title)return alert('여행 이름을 입력해주세요');
  if(!start||!end)return alert('출발일과 도착일을 입력해주세요');
  if(new Date(end)<new Date(start))return alert('도착일이 출발일보다 빠릅니다');
  const days=mkDays(start,end);
  if(days.length>21)return alert('최대 21일까지 지원합니다');
- const members=(mem?mem.split(/[,·\/\s]+/).filter(Boolean):['나']).map(n=>({n}));
- const t={id:uid(),title,region,cur,start,end,members,budget,days,exp:[],docs:[],
+ const members=(mem?mem.split(/[,\u00b7\/\s]+/).filter(Boolean):['나']).map(n=>({n:n,b:mb[n]||0}));
+ const t={id:uid(),title,region,cur,start,end,members,budget,split:'even',days,exp:[],docs:[],
   prep:PREP_TPL.map(x=>({g:x.g,items:x.items.map(i=>({t:i.t,s:i.s,v:0}))}))};
  S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='plan';save();
  toast(days.length+'일 여행을 만들었습니다');render()}
@@ -187,23 +190,54 @@ function delFixed(fid){const d=T().days[DAYI];const f=d.fixed.find(x=>x.id===fid
 Object.assign(window,{addFixed,delFixed});
 
 /* ══ 지출 · 준비물 · 서류 ══ */
-function addExp(){const t=T();if(!t)return;
- const c=t.cur||'JPY', cn=CS_(c).n;
- const nm=prompt('지출 항목 (예: 점심 라멘)');if(!nm)return;
- const raw=prompt('금액 — '+cn+'이면 숫자만, 원화면 뒤에 W\n(예: 1800  또는  25000W)');if(!raw)return;
- const isW=/w/i.test(raw), n=parseFloat(String(raw).replace(/[^0-9.]/g,''));if(!n)return;
- const who=t.members.length>1?(prompt('결제자 ('+t.members.map(m=>m.n).join(' / ')+')',t.members[0].n)||t.members[0].n):t.members[0].n;
- const cat=prompt('분류 (음식/교통/쇼핑/관광/숙박/항공/기타)','음식')||'기타';
- const pay=confirm('카드로 결제했나요?\n확인 = 카드 / 취소 = 현금')?'카드':'현금';
- t.exp.push({id:uid(),nm,amt:n,cur:isW?'KRW':c,who,cat,pay});
- save();toast('지출 추가됨');render()}
+let EF=null;
+function openExp(){const t=T();if(!t)return;
+ EF={nm:'',amt:'',cur:t.cur||'JPY',who:t.members[0].n,cat:'음식',pay:'카드',personal:0};render();
+ setTimeout(function(){const e=document.getElementById('e_nm');if(e)e.focus()},120)}
+function closeExp(){EF=null;render()}
+function efSet(k,v){if(!EF)return;EF[k]=v;render()}
+function efSync(){if(!EF)return;
+ const a=document.getElementById('e_nm'),b=document.getElementById('e_amt');
+ if(a)EF.nm=a.value; if(b)EF.amt=b.value}
+function saveExp(){const t=T();if(!t||!EF)return; efSync();
+ const n=parseFloat(String(EF.amt).replace(/[^0-9.]/g,''));
+ if(!EF.nm.trim())return alert('항목을 입력해주세요');
+ if(!n)return alert('금액을 입력해주세요');
+ t.exp.push({id:uid(),nm:EF.nm.trim(),amt:n,cur:EF.cur,who:EF.who,cat:EF.cat,pay:EF.pay,personal:EF.personal?1:0});
+ EF=null;save();toast('지출 추가됨');render()}
+Object.assign(window,{openExp,closeExp,efSet,efSync,saveExp});
+function vExpForm(){const t=T();
+ const CATS=['음식','교통','쇼핑','관광','숙박','항공','기타'];
+ const C=t.cur||'JPY';
+ return '<div class="sheetbg" onclick="closeExp()"></div><div class="sheet">'+
+  '<div class="shd">지출 추가<span onclick="closeExp()">닫기 ✕</span></div>'+
+  '<div class="sbody">'+
+   '<div class="fld"><label>항목</label><input id="e_nm" value="'+esc(EF.nm)+'" placeholder="예: 점심 라멘" autocomplete="off" oninput="efSync()"></div>'+
+   '<div class="fld"><label>금액</label><div class="amtrow">'+
+    '<input id="e_amt" type="number" inputmode="decimal" value="'+esc(EF.amt)+'" placeholder="0" oninput="efSync()">'+
+    '<span class="seg"><b class="'+(EF.cur===C?'on':'')+'" onclick="efSync();efSet(\'cur\',\''+C+'\')">'+CS_(C).s+' '+CS_(C).n+'</b>'+
+    '<b class="'+(EF.cur==='KRW'?'on':'')+'" onclick="efSync();efSet(\'cur\',\'KRW\')">₩ 원</b></span></div>'+
+    '<div class="hint">'+(EF.cur!=='KRW'&&EF.amt?'≈ '+W((parseFloat(String(EF.amt).replace(/[^0-9.]/g,''))||0)*rateOf(EF.cur)):'1'+CS_(C).n+' = '+rateOf(C).toFixed(2)+'원')+'</div></div>'+
+   '<div class="fld"><label>이 돈은</label><div class="seg big">'+
+    '<b class="'+(!EF.personal?'on':'')+'" onclick="efSync();efSet(\'personal\',0)">공동 경비</b>'+
+    '<b class="'+(EF.personal?'on':'')+'" onclick="efSync();efSet(\'personal\',1)">개인 경비</b></span></div>'+
+    '<div class="hint">'+(EF.personal?'개인 경비는 <b>공동 예산에서 빠지고 정산에도 안 들어갑니다</b>':'공동 예산에서 차감되고 정산 대상이 됩니다')+'</div></div>'+
+   (t.members.length>1?'<div class="fld"><label>'+(EF.personal?'누구 돈':'누가 결제')+'</label><div class="chips">'+
+    t.members.map(m=>'<span class="ch '+(EF.who===m.n?'on':'')+'" onclick="efSync();efSet(\'who\',\''+esc(m.n)+'\')">'+esc(m.n)+'</span>').join('')+'</div></div>':'')+
+   '<div class="fld"><label>분류</label><div class="chips">'+
+    CATS.map(c=>'<span class="ch '+(EF.cat===c?'on':'')+'" onclick="efSync();efSet(\'cat\',\''+c+'\')">'+c+'</span>').join('')+'</div></div>'+
+   '<div class="fld"><label>결제 수단</label><div class="seg">'+
+    '<b class="'+(EF.pay==='카드'?'on':'')+'" onclick="efSync();efSet(\'pay\',\'카드\')">카드</b>'+
+    '<b class="'+(EF.pay==='현금'?'on':'')+'" onclick="efSync();efSet(\'pay\',\'현금\')">현금</b></div></div>'+
+   '<div class="fbtn" onclick="saveExp()">저장</div>'+
+  '</div></div>'}
 function delExp(id){const t=T();if(!confirm('이 지출을 삭제할까요?'))return;
  t.exp=t.exp.filter(e=>e.id!==id);save();render()}
 function addPrep(gi){const t=T();const v=prompt('추가할 항목');if(!v)return;
  t.prep[gi].items.push({t:v,s:'',v:0});save();render()}
 function addDoc(){const t=T();const n=prompt('서류 이름 (예: 진에어 e-티켓)');if(!n)return;
  const s=prompt('메모 — 예약번호 등')||'';t.docs.push({id:uid(),i:'📄',n,s});save();render()}
-Object.assign(window,{addExp,delExp,addPrep,addDoc});
+Object.assign(window,{delExp,addPrep,addDoc});
 
 /* ══ 엔진 ══ */
 const DAY_START='08:00', DAY_END='22:00';
@@ -237,7 +271,7 @@ function vTripList(){
     <div class="dd">${dday(t)}</div><h3>${esc(t.title)}</h3></div>
    <div class="bd"><div class="r"><span class="mut">${t.start} ~ ${t.end}</span><b>${t.days.length}일</b></div>
     <div class="r"><span class="mut">지역 · 인원</span><b>${esc(t.region||'미지정')} · ${t.members.map(m=>esc(m.n)).join(', ')}</b></div>
-    <div class="r"><span class="mut">고정 ${nF}건 · 후보 ${nC}곳</span><b>${t.budget?W(t.budget):'예산 미설정'}</b></div>
+    <div class="r"><span class="mut">고정 ${nF}건 · 후보 ${nC}곳</span><b>${t.members.reduce((a,m)=>a+(m.b||0),0)?W(t.members.reduce((a,m)=>a+(m.b||0),0)):'예산 미설정'}</b></div>
    </div></div>`}).join('')}
  ${first?'':'<div class="newtrip" onclick="A.newtrip()">＋ 새 여행 만들기</div>'}
  <div class="sec">지난 여행 기록<span class="secr">읽기 전용</span></div>
@@ -271,10 +305,12 @@ function vNew(){
   <div class="frow">
    <div class="fld"><label>출발</label><input id="f_start" type="date" value="${t0}"></div>
    <div class="fld"><label>도착</label><input id="f_end" type="date" value="${t0}"></div></div>
-  <div class="fld"><label>함께 가는 사람</label><input id="f_mem" placeholder="이름을 쉼표로 구분 · 비우면 혼자" autocomplete="off">
-   <div class="hint">지출 정산에 쓰입니다</div></div>
-  <div class="fld"><label>총 예산 (원)</label><input id="f_budget" type="number" inputmode="numeric" placeholder="비워도 됩니다">
-   <div class="hint">넣으면 하루 쓸 수 있는 금액이 자동 계산됩니다</div></div>
+  <div class="fld"><label>함께 가는 사람</label><input id="f_mem" placeholder="이름을 쉼표로 구분 · 비우면 혼자" autocomplete="off" oninput="mkBudRows()">
+   <div class="hint">이름을 넣으면 아래에 1인당 예산칸이 생깁니다</div></div>
+  <div class="fld"><label>공동 예산 · 각자 얼마씩</label>
+   <div id="f_budrows"></div>
+   <div class="budsum" id="f_budsum">합계 ₩0</div>
+   <div class="hint">여기 넣는 건 <b>같이 쓸 돈</b>입니다. 개인 쇼핑처럼 각자 쓰는 돈은 넣지 마세요 — 지출을 <b>개인</b>으로 찍으면 공동 예산에서 빠집니다.</div></div>
   <div class="fbtn" onclick="createTrip()">여행 만들기</div>
   <div class="fcancel" onclick="A.trips()">취소</div>
   <div class="fnote"><b>만든 다음 순서</b><br>
@@ -284,6 +320,23 @@ function vNew(){
  </div>`;
 }
 
+function mkBudRows(){
+ const el=document.getElementById('f_budrows'); if(!el)return;
+ const raw=(document.getElementById('f_mem')||{value:''}).value.trim();
+ const names=raw?raw.split(/[,\u00b7\/\s]+/).filter(Boolean):['나'];
+ const old={}; el.querySelectorAll('input').forEach(i=>old[i.dataset.n]=i.value);
+ el.innerHTML=names.map(n=>'<div class="budrow"><span>'+esc(n)+'</span>'+
+  '<input type="number" inputmode="numeric" data-n="'+esc(n)+'" value="'+(old[n]||'')+'" placeholder="0" oninput="sumBud()"></div>').join('');
+ sumBud()}
+function sumBud(){
+ const el=document.getElementById('f_budrows'); if(!el)return 0;
+ let s=0; const ins=el.querySelectorAll('input');
+ ins.forEach(i=>s+=parseInt(String(i.value).replace(/[^0-9]/g,''))||0);
+ const o=document.getElementById('f_budsum');
+ if(o)o.textContent='합계 '+W(s)+(ins.length>1?' · '+ins.length+'명':'');
+ return s}
+Object.assign(window,{mkBudRows,sumBud});
+
 function vSettings(){
  const t=T();
  return `${t?`<div class="sec">이 여행</div>
@@ -292,9 +345,14 @@ function vSettings(){
    <div class="srow"><span>기간</span><b>${t.start} ~ ${t.end} (${t.days.length}일)</b></div>
    <div class="srow"><span>지역</span><b>${esc(t.region||'미지정')}</b></div>
    <div class="srow"><span>통화</span><b>${t.cur} · 1${CS_(t.cur).n} = ${rateOf(t.cur).toFixed(2)}원</b></div>
-   <div class="srow"><span>인원</span><b>${t.members.map(m=>esc(m.n)).join(', ')}</b></div>
-   <div class="srow"><span>예산</span><b>${t.budget?W(t.budget):'미설정'}</b></div>
+   ${t.members.map(m=>`<div class="srow"><span>${esc(m.n)} 예산</span><b>${W(m.b||0)} <span class="edit" onclick="editBud('${esc(m.n)}')">수정</span></b></div>`).join('')}
+   <div class="srow"><span>공동 예산 합계</span><b>${W(t.members.reduce((a,m)=>a+(m.b||0),0))}</b></div>
   </div>
+  <div class="sec">정산 방식</div>
+  <div class="card mrow"><div class="seg big">
+   <b class="${t.split!=='ratio'?'on':''}" onclick="setSplit('even')">1/N — 똑같이</b>
+   <b class="${t.split==='ratio'?'on':''}" onclick="setSplit('ratio')">예산 비율대로</b></div>
+   <div class="note2" style="margin-top:9px">공동 경비만 정산합니다. 개인 경비는 항상 제외됩니다.</div></div>
   <div class="dbtn warn" onclick="resetTrip('${t.id}')">이 여행 내용만 비우기
    <em>날짜·인원·예산은 두고 고정 일정·후보·지출·체크만 초기화</em></div>
   <div class="dbtn danger" onclick="delTrip('${t.id}')">이 여행 삭제
@@ -318,6 +376,13 @@ function vSettings(){
   · 인터넷이 끊겨도 열립니다.
  </div></div><div style="height:20px"></div>`;
 }
+
+function editBud(name){const t=T();const m=t.members.find(x=>x.n===name);if(!m)return;
+ const v=prompt(name+' 님의 공동 예산 (원)', String(m.b||0)); if(v===null)return;
+ m.b=parseInt(String(v).replace(/[^0-9]/g,''))||0;
+ t.budget=t.members.reduce((a,x)=>a+(x.b||0),0); save();toast('예산을 바꿨습니다');render()}
+function setSplit(v){const t=T();t.split=v;save();render()}
+Object.assign(window,{editBud,setSplit});
 
 function vArchive(){
  const a=ARCHIVE.find(x=>x.id===window.__arch)||ARCHIVE[0];
@@ -482,7 +547,8 @@ function vToday(){
    return Object.assign({},p,{mv:mv,need:need,end:base+need,slack:win-need})}).filter(o=>o.slack>=0).sort((a,b)=>a.slack-b.slack);
  const tooBig=D.cands.map(P).filter(p=>p&&!done[p.i]).length-opts.length;
  const vis=Object.keys(done).map(id=>({tm:done[id],nm:(P(id)||{n:'-'}).n})).sort((a,b)=>a.tm.localeCompare(b.tm));
- const SP=t.exp.reduce((a,e)=>a+eK(e),0);
+ const SP=t.exp.filter(e=>!e.personal).reduce((a,e)=>a+eK(e),0);
+ const BG=t.members.reduce((a,m)=>a+(m.b||0),0)||t.budget||0;
  const left=Math.max(1,t.days.length-di);
  return `<div class="tmode">
   <div class="lb">${live?'여행 중 · 실시간 계산':'미리보기 · '+dday(t)}</div>
@@ -490,7 +556,7 @@ function vToday(){
   <div class="mt">${D.d} (${D.wd}) · ${esc(t.region||t.title)}</div>
   <div class="kpis"><div><div class="k">다녀온 곳</div><div class="v">${vis.length}곳</div></div>
    <div><div class="k">담은 후보</div><div class="v">${D.cands.length}곳</div></div>
-   <div><div class="k">하루 예산</div><div class="v">${t.budget?W((t.budget-SP)/left):'—'}</div></div></div></div>
+   <div><div class="k">하루 예산</div><div class="v">${BG?W((BG-SP)/left):'—'}</div></div></div></div>
  <div class="todaynote">${live
    ?'지금 시각 기준으로 <b>다음 고정 일정까지 남은 시간</b>을 재고, 그 안에 갔다 올 수 있는 후보만 골라 보여줍니다.'
    :'오늘이 여행 기간이 아니라 <b>미리보기</b>입니다. 여행이 시작되면 현재 시각 기준으로 자동 전환됩니다.'}</div>
@@ -519,33 +585,44 @@ function vToday(){
 function vMoney(){
  const t=T(); if(!t)return vTripList();
  const C=t.cur||'JPY', rate=rateOf(C);
- const SP=t.exp.reduce((a,e)=>a+eK(e),0), BG=t.budget||0, RM=BG-SP;
- const pct=BG?Math.min(100,SP/BG*100):0;
+ const shared=t.exp.filter(e=>!e.personal), mine=t.exp.filter(e=>e.personal);
+ const SP=shared.reduce((a,e)=>a+eK(e),0), PS=mine.reduce((a,e)=>a+eK(e),0);
+ const BG=t.members.reduce((a,m)=>a+(m.b||0),0)||t.budget||0;
+ const RM=BG-SP, pct=BG?Math.min(100,SP/BG*100):0;
  let di=t.days.findIndex(d=>d.iso===todayIso()); if(di<0)di=0;
  const left=Math.max(1,t.days.length-di);
- const cs={};t.exp.forEach(e=>cs[e.cat]=(cs[e.cat]||0)+eK(e));
+ const cs={};shared.forEach(e=>cs[e.cat]=(cs[e.cat]||0)+eK(e));
  const rows=Object.keys(cs).map(k=>[k,cs[k]]).sort((a,b)=>b[1]-a[1]);
  const mx=rows.length?rows[0][1]:1;
  const CC={항공:'#3A6EA5',숙박:'#B08834',음식:'#D9542B',교통:'#98918A',관광:'#0E6B5E',쇼핑:'#6B4FA8',기타:'#98918A'};
- const paid={};t.members.forEach(m=>paid[m.n]=0);t.exp.forEach(e=>paid[e.who]=(paid[e.who]||0)+eK(e));
- const fair=SP/t.members.length;
- const ord=t.members.map(m=>({n:m.n,d:(paid[m.n]||0)-fair})).sort((a,b)=>a.d-b.d);
- const cash=t.exp.filter(e=>e.pay==='현금').reduce((a,e)=>a+eK(e),0);
- return `<div class="card mh">${BG?`<div class="lb">남은 예산</div><div class="big">${W(RM)}</div>
+ const paid={},pers={};
+ t.members.forEach(m=>{paid[m.n]=0;pers[m.n]=0});
+ shared.forEach(e=>paid[e.who]=(paid[e.who]||0)+eK(e));
+ mine.forEach(e=>pers[e.who]=(pers[e.who]||0)+eK(e));
+ const ratio=t.split==='ratio'&&BG>0;
+ const share={};t.members.forEach(m=>share[m.n]=ratio?SP*((m.b||0)/BG):SP/t.members.length);
+ const ord=t.members.map(m=>({n:m.n,d:(paid[m.n]||0)-share[m.n]})).sort((a,b)=>a.d-b.d);
+ const cash=shared.reduce((a,e)=>a+(e.pay==='현금'?eK(e):0),0);
+ return `<div class="card mh">${BG?`<div class="lb">공동 예산 남은 돈</div><div class="big">${W(RM)}</div>
    <div class="bar"><i style="width:${pct}%;background:${RM<0?'var(--warn)':'var(--acc)'}"></i></div>
    <div class="sp"><span>사용 ${W(SP)} · ${Math.round(pct)}%</span><span>총 ${W(BG)}</span></div>
+   <div class="budlist">${t.members.map(m=>`<div class="bl"><span>${esc(m.n)}</span><b>${W(m.b||0)}</b></div>`).join('')}</div>
    <div class="gauge"><div class="k">남은 ${left}일 · 하루 가능 금액</div><div class="v">${W(RM/left)}</div>
     <div class="n">현금 ${W(cash)} · 카드 ${W(SP-cash)}</div></div>`
-  :`<div class="lb">쓴 돈</div><div class="big">${W(SP)}</div>
-   <div class="gauge"><div class="k">예산이 설정되지 않았습니다</div>
-    <div class="n">설정에서 예산을 넣으면 잔액과 하루 가능 금액이 계산됩니다</div></div>`}</div>
- ${rows.length?`<div class="sec">분류별</div><div class="card mrow">${rows.map(r=>`<div class="it">
+  :`<div class="lb">공동 경비로 쓴 돈</div><div class="big">${W(SP)}</div>
+   <div class="gauge"><div class="k">공동 예산이 설정되지 않았습니다</div>
+    <div class="n">설정에서 인원별 예산을 넣으면 잔액과 하루 가능 금액이 계산됩니다</div></div>`}</div>
+ ${PS>0?`<div class="sec">개인 경비<span class="secr">공동 예산·정산 제외</span></div>
+ <div class="card mrow">${t.members.filter(m=>pers[m.n]>0).map(m=>`<div class="srow"><span>${esc(m.n)}</span><b>${W(pers[m.n])}</b></div>`).join('')}
+  <div class="srow" style="border-top:1px solid var(--line);margin-top:4px;padding-top:10px"><span>개인 경비 합계</span><b>${W(PS)}</b></div>
+  <div class="note2" style="margin-top:8px">각자 쇼핑처럼 혼자 쓴 돈입니다. 공동 예산에서 차감되지 않고 정산에도 들어가지 않습니다.</div></div>`:''}
+ ${rows.length?`<div class="sec">분류별<span class="secr">공동 경비만</span></div><div class="card mrow">${rows.map(r=>`<div class="it">
   <div class="l"><span>${esc(r[0])}</span><em>${W(r[1])}</em></div>
   <div class="mini"><i style="width:${r[1]/mx*100}%;background:${CC[r[0]]||'#98918A'}"></i></div></div>`).join('')}</div>`:''}
- ${t.members.length>1&&SP>0?`<div class="sec">정산</div>
- <div class="card mrow settle"><div style="font-size:12px;font-weight:700;opacity:.85">지금까지 기준</div>
+ ${t.members.length>1&&SP>0?`<div class="sec">정산<span class="secr">${ratio?'예산 비율':'1/N'} 기준</span></div>
+ <div class="card mrow settle"><div style="font-size:12px;font-weight:700;opacity:.85">공동 경비만 정산</div>
   <div class="res">${Math.abs(ord[0].d)<1?'정산 없음':esc(ord[0].n)+' → '+esc(ord[ord.length-1].n)+' '+W(Math.abs(ord[0].d))}</div>
-  <div class="dt">${t.members.map(m=>esc(m.n)+' 결제 '+W(paid[m.n]||0)).join(' · ')}<br>1/N 기준 1인 ${W(fair)}</div></div>`:''}
+  <div class="dt">${t.members.map(m=>esc(m.n)+' 결제 '+W(paid[m.n]||0)+' / 부담 '+W(share[m.n])).join('<br>')}</div></div>`:''}
  <div class="sec">환율 계산기<span class="secr" onclick="refreshFX()">↻ 새로고침</span></div>
  <div class="card mrow">
   <div class="fxhd"><b>1${CS_(C).n} = ${rate.toFixed(2)}원</b><span>${FX.live?'실시간':'기본값'} · ${fxAge()}</span></div>
@@ -554,13 +631,13 @@ function vMoney(){
    <span style="font-size:14px;font-weight:800;color:var(--sub)">${CS_(C).n} =</span>
    <div id="krw" style="font-size:19px;font-weight:800;letter-spacing:-.02em"></div></div>
   <div class="cmp" id="cmp"></div></div>
- <div class="sec">지출 내역<span class="secr">${t.exp.length}건</span></div>
+ <div class="sec">지출 내역<span class="secr">공동 ${shared.length} · 개인 ${mine.length}</span></div>
  <div class="card mrow" style="margin-bottom:96px">${t.exp.length?t.exp.slice().reverse().map(e=>`<div class="exp">
-  <span style="flex:1">${esc(e.nm)}<span class="who">${esc(e.who)}</span><span class="pay" style="background:${e.pay==='현금'?'#FBF4E6':'#EDF2F7'};color:${e.pay==='현금'?'#8A6A22':'#3A6EA5'}">${e.pay}</span></span>
+  <span style="flex:1">${esc(e.nm)}<span class="who">${esc(e.who)}</span>${e.personal?'<span class="pay" style="background:#F1ECF7;color:#6B4FA8">개인</span>':''}<span class="pay" style="background:${e.pay==='현금'?'#FBF4E6':'#EDF2F7'};color:${e.pay==='현금'?'#8A6A22':'#3A6EA5'}">${e.pay}</span></span>
   <b>${e.cur&&e.cur!=='KRW'?FMT(e.amt,e.cur):W(e.amt||e.krw||0)}</b><span class="rm sm" onclick="delExp('${e.id}')">✕</span></div>`).join('')
   :'<div class="gnone" style="margin:0">아직 없습니다. 우하단 ＋ 로 추가하세요.</div>'}</div>
- <button class="fab" onclick="addExp()">＋</button>`;
-}
+ <button class="fab" onclick="openExp()">＋</button>
+ ${EF?vExpForm():''}`}
 function calc(){const el=document.getElementById('fxin');if(!el)return;
  const C=curOf(), rate=rateOf(C), v=+(el.value||0), base=v*rate;
  document.getElementById('krw').textContent=W(base);

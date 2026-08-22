@@ -311,13 +311,42 @@ main.notab{padding-bottom:24px}
 .fxhd span{font-size:11px;color:var(--dim);font-weight:700}
 .secr{cursor:pointer}
 
+
+.budrow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.budrow span{flex:0 0 88px;font-size:13.5px;font-weight:700}
+.budrow input{flex:1;border:1px solid var(--line);border-radius:11px;padding:12px;font-size:16px;background:#fff;min-height:48px;text-align:right}
+.budsum{text-align:right;font-size:14px;font-weight:800;color:var(--acc2);padding:4px 2px 2px}
+.budlist{margin-top:10px;background:#F7F4EF;border-radius:11px;padding:9px 11px}
+.bl{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0}
+.bl span{color:var(--sub);font-weight:700}
+.bl b{font-weight:800}
+.edit{font-size:11px;font-weight:800;color:var(--acc2);margin-left:8px;padding:4px 8px;border:1px solid #CBE0DB;border-radius:8px;background:#F2F8F6}
+.seg{display:flex;gap:6px}
+.seg b{flex:1;text-align:center;font-size:13px;font-weight:800;padding:11px 8px;border:1px solid var(--line);border-radius:11px;background:#FAF8F5;color:var(--sub);min-height:44px;display:flex;align-items:center;justify-content:center}
+.seg b.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.seg.big b{font-size:13.5px;padding:14px 8px;min-height:50px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.ch{font-size:13px;font-weight:700;padding:10px 14px;border:1px solid var(--line);border-radius:11px;background:#FAF8F5;color:var(--sub);min-height:42px;display:flex;align-items:center}
+.ch.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.amtrow{display:flex;gap:8px;align-items:center}
+.amtrow input{flex:1;border:1px solid var(--line);border-radius:11px;padding:13px;font-size:17px;font-weight:800;background:#fff;min-height:50px;text-align:right}
+.amtrow .seg{flex:0 0 auto}
+.amtrow .seg b{flex:0 0 auto;padding:11px 10px;font-size:12px}
+.sheetbg{position:fixed;inset:0;background:rgba(23,19,15,.45);z-index:80}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:560px;margin:0 auto;background:var(--bg);
+ border-radius:22px 22px 0 0;z-index:90;max-height:88dvh;display:flex;flex-direction:column;
+ box-shadow:0 -10px 40px -10px rgba(0,0,0,.35)}
+.shd{padding:16px 18px 12px;font-size:16px;font-weight:800;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+.shd span{font-size:12.5px;font-weight:700;color:var(--sub)}
+.sbody{padding:16px 16px calc(20px + env(safe-area-inset-bottom));overflow-y:auto}
+
 .loading{display:flex;align-items:center;justify-content:center;height:100dvh;font-size:14px;font-weight:700;color:var(--sub)}
 </style>
 </head>
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
