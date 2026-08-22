@@ -340,13 +340,18 @@ main.notab{padding-bottom:24px}
 .shd span{font-size:12.5px;font-weight:700;color:var(--sub)}
 .sbody{padding:16px 16px calc(20px + env(safe-area-inset-bottom));overflow-y:auto}
 
+
+.syncdot{display:inline-block;font-size:10.5px;font-weight:800;color:var(--acc2);background:#E9F2F0;border-radius:20px;padding:3px 9px;margin-left:8px;vertical-align:middle}
+.linkbox{margin-top:10px;background:#F4F1EB;border-radius:10px;padding:11px 12px;font-size:11.5px;color:var(--sub);word-break:break-all;font-weight:600;line-height:1.5}
+
 .loading{display:flex;align-items:center;justify-content:center;height:100dvh;font-size:14px;font-weight:700;color:var(--sub)}
 </style>
 </head>
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
+<script type="module" src="sync.js?v=5"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>

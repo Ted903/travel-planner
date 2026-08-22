@@ -44,6 +44,88 @@ function refreshFX(){toast('환율 갱신 중…');
  fetchFX(true).then(function(){toast(FX.live?'환율 갱신 완료':'갱신 실패 · 저장된 값 사용');render()})}
 window.refreshFX=refreshFX;
 
+/* ══ 공유 · 동기화 ══ */
+let SYNC={on:false,pushT:null,last:0,status:''};
+function shareOf(t){return t&&t.share||null}
+function syncStatus(){const t=T();
+ if(!t||!t.share)return '';
+ if(!window.FB)return '연결 중';
+ return SYNC.status||'동기화 중';}
+function pushSoon(){const t=T();
+ if(!t||!t.share||!window.FB)return;
+ clearTimeout(SYNC.pushT);
+ SYNC.pushT=setTimeout(function(){
+  const tt=T(); if(!tt||!tt.share)return;
+  const payload=JSON.parse(JSON.stringify(tt)); payload.share=tt.share;
+  window.FB.push(tt.share,payload,signer()).then(function(){
+   SYNC.last=Date.now();SYNC.status='저장됨';paintSync()
+  }).catch(function(e){SYNC.status='저장 실패';paintSync()});
+ },700)}
+function paintSync(){const el=document.getElementById('syncbadge');if(el)el.textContent=syncStatus()}
+function myName(){try{return localStorage.getItem('travelplanner.me')||''}catch(e){return ''}}
+function devId(){try{let d=localStorage.getItem('travelplanner.dev');
+ if(!d){d=Math.random().toString(36).slice(2,10);localStorage.setItem('travelplanner.dev',d)}
+ return d}catch(e){return 'x'}}
+function signer(){return devId()+'|'+(myName()||'')}
+/* 지출은 합치기 — 양쪽이 동시에 적어도 안 사라지도록 */
+function mergeTrip(local,remote){
+ const out=JSON.parse(JSON.stringify(remote));
+ const byId={}; (out.exp||[]).forEach(e=>byId[e.id]=e);
+ (local.exp||[]).forEach(e=>{if(!byId[e.id]){byId[e.id]=e}});
+ out.exp=Object.keys(byId).map(k=>byId[k]);
+ return out}
+function setMe(n){try{localStorage.setItem('travelplanner.me',n)}catch(e){}}
+function startWatch(){
+ const t=T(); if(!t||!t.share||!window.FB)return;
+ window.FB.watch(t.share,function(r){
+  if(!r||!r.trip)return;
+  const cur=T(); if(!cur||cur.share!==t.share)return;
+  const mine=(r.updatedBy||'').split('|')[0]===devId();
+  if(mine){SYNC.status='저장됨';paintSync();return}
+  const i=S.trips.findIndex(x=>x.id===cur.id);
+  if(i<0)return;
+  const keepId=cur.id;
+  const localExpCount=(cur.exp||[]).length;
+  const merged=mergeTrip(cur,r.trip);
+  S.trips[i]=Object.assign({},merged,{id:keepId,share:t.share});
+  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+  const who=(r.updatedBy||'').split('|')[1];
+  SYNC.status=who?(who+' 수정'):'수정됨';
+  if(merged.exp.length>(r.trip.exp||[]).length){pushSoon()}
+  render();
+ });
+ SYNC.on=true}
+function shareTrip(){
+ const t=T(); if(!t)return;
+ if(!window.FB){alert('아직 연결 중입니다. 잠시 후 다시 눌러주세요.');return}
+ if(!myName()){
+  const n=prompt('내 이름 (동행자에게 "누가 수정했는지" 표시됩니다)', t.members[0]?t.members[0].n:'나');
+  if(!n)return; setMe(n.trim());
+ }
+ if(!t.share) t.share=window.FB.newId();
+ save();
+ const payload=JSON.parse(JSON.stringify(t));
+ window.FB.push(t.share,payload,signer()).then(function(){
+  SYNC.last=Date.now();SYNC.status='저장됨';startWatch();
+  const url=location.origin+location.pathname+'?t='+t.share;
+  copyLink(url);
+  render();
+ }).catch(function(e){alert('공유에 실패했습니다: '+e.message)});
+}
+function copyLink(url){
+ if(navigator.share){navigator.share({title:'여행 계획',url:url}).catch(function(){fallbackCopy(url)});return}
+ fallbackCopy(url)}
+function fallbackCopy(url){
+ try{navigator.clipboard.writeText(url).then(function(){toast('링크를 복사했습니다')},function(){prompt('이 링크를 동행자에게 보내세요',url)})}
+ catch(e){prompt('이 링크를 동행자에게 보내세요',url)}}
+function shareLink(){const t=T();if(!t||!t.share)return shareTrip();
+ copyLink(location.origin+location.pathname+'?t='+t.share)}
+function unshare(){const t=T();if(!t||!t.share)return;
+ if(!confirm('공유를 해제합니다.\n이 기기에만 남고, 동행자 화면과 더 이상 연결되지 않습니다.'))return;
+ if(window.FB)window.FB.stop();
+ delete t.share; SYNC.on=false; SYNC.status=''; save(); toast('공유를 해제했습니다'); render()}
+Object.assign(window,{shareTrip,shareLink,unshare,setMe,myName});
+
 function hav(a,b){const R=6371,r=x=>x*Math.PI/180;const dl=r(b[0]-a[0]),dg=r(b[1]-a[1]);
  return 2*R*Math.asin(Math.sqrt(Math.sin(dl/2)**2+Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(dg/2)**2))}
 function moveEst(f,t){if(!f||!t||!f.ll||!t.ll)return{min:15,mode:'이동',km:null};
@@ -81,7 +163,8 @@ function load(){
  S.trips.forEach(t=>{t.days=t.days||[];t.days.forEach(d=>{d.fixed=d.fixed||[];d.cands=d.cands||[];d.done=d.done||{}});
   t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}];t.cur=t.cur||'JPY'});
  try{localStorage.removeItem('travelplanner.v1')}catch(e){}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장 공간이 부족합니다')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장 공간이 부족합니다')}
+ try{pushSoon()}catch(e){}}
 const T=()=>S.trips.find(t=>t.id===S.active)||null;
 
 function mkDays(start,end){
@@ -272,6 +355,7 @@ function vTripList(){
    <div class="bd"><div class="r"><span class="mut">${t.start} ~ ${t.end}</span><b>${t.days.length}일</b></div>
     <div class="r"><span class="mut">지역 · 인원</span><b>${esc(t.region||'미지정')} · ${t.members.map(m=>esc(m.n)).join(', ')}</b></div>
     <div class="r"><span class="mut">고정 ${nF}건 · 후보 ${nC}곳</span><b>${t.members.reduce((a,m)=>a+(m.b||0),0)?W(t.members.reduce((a,m)=>a+(m.b||0),0)):'예산 미설정'}</b></div>
+    ${t.share?'<div class="r"><span class="mut">공유</span><b style="color:var(--acc2)">동행자와 공유 중</b></div>':''}
    </div></div>`}).join('')}
  ${first?'':'<div class="newtrip" onclick="A.newtrip()">＋ 새 여행 만들기</div>'}
  <div class="sec">지난 여행 기록<span class="secr">읽기 전용</span></div>
@@ -357,6 +441,21 @@ function vSettings(){
    <em>날짜·인원·예산은 두고 고정 일정·후보·지출·체크만 초기화</em></div>
   <div class="dbtn danger" onclick="delTrip('${t.id}')">이 여행 삭제
    <em>이 여행에 넣은 모든 내용이 사라집니다</em></div>`:'<div class="sec">여행</div><div class="card mrow"><div class="gnone" style="margin:0">선택된 여행이 없습니다</div></div>'}
+ <div class="sec">동행자와 공유</div>
+ ${t?(t.share?`<div class="card mrow">
+   <div class="srow"><span>상태</span><b style="color:var(--acc2)">공유 중 · ${esc(syncStatus())}</b></div>
+   <div class="srow"><span>내 이름</span><b>${esc(myName()||'미설정')} <span class="edit" onclick="const n=prompt('내 이름',myName());if(n){setMe(n.trim());render()}">수정</span></b></div>
+   <div class="linkbox">${esc(location.origin+location.pathname)}?t=${esc(t.share)}</div>
+  </div>
+  <div class="dbtn" onclick="shareLink()" style="color:var(--acc2);border-color:#CBE0DB;background:#F2F8F6">초대 링크 다시 보내기
+   <em>이 링크를 받은 사람은 같은 계획을 보고 수정할 수 있습니다</em></div>
+  <div class="dbtn warn" onclick="unshare()">공유 해제
+   <em>이 기기에만 남기고 동행자 화면과 연결을 끊습니다</em></div>`
+  :`<div class="card mrow"><div class="note2">
+   지금은 <b>이 기기에만</b> 저장됩니다. 공유하면 동행자가 같은 계획을 보고 같이 수정할 수 있고, 내 폰과 PC도 자동으로 맞춰집니다.
+  </div></div>
+  <div class="dbtn" onclick="shareTrip()" style="color:#fff;border-color:var(--acc2);background:var(--acc2)">동행자와 공유하기
+   <em style="color:rgba(255,255,255,.75)">초대 링크가 만들어집니다</em></div>`):''}
  <div class="sec">환율</div>
  <div class="card mrow">
   <div class="srow"><span>기준</span><b>1${CS_(curOf()).n} = ${rateOf(curOf()).toFixed(2)}원</b></div>
@@ -689,7 +788,8 @@ function render(){
  const showTabs=['__new','__arch'].indexOf(TAB)<0;
  const prevMain=document.getElementById('main');
  const sc=prevMain?prevMain.scrollTop:0;
- app.innerHTML=`<header class="top"><h1>${esc(H.title)}</h1>
+ const sb=(t&&t.share)?`<span class="syncdot" id="syncbadge">${esc(syncStatus())}</span>`:'';
+ app.innerHTML=`<header class="top"><h1>${esc(H.title)}${sb}</h1>
    <div class="rt" onclick="${H.act}">${esc(H.rt)}</div></header>
   <main id="main" class="${showTabs?'':'notab'}">${(V[TAB]||vTripList)()}</main>
   ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}`;
@@ -701,6 +801,26 @@ function render(){
 window.render=render;
 
 /* ══ 부팅 ══ */
+function joinShared(sid){
+ if(!window.FB){window.addEventListener('fb-ready',function(){joinShared(sid)},{once:true});return}
+ const exist=S.trips.find(x=>x.share===sid);
+ if(exist){S.active=exist.id;DAYI=0;TAB='plan';startWatch();render();return}
+ document.getElementById('app').innerHTML='<div class="loading">공유된 여행을 불러오는 중…</div>';
+ window.FB.pull(sid).then(function(r){
+  if(!r||!r.trip){document.getElementById('app').innerHTML='<div class="loading">링크가 잘못되었거나 삭제된 여행입니다</div>';return}
+  const t=Object.assign({},r.trip,{id:uid(),share:sid});
+  t.days=t.days||[];t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}];
+  S.trips.push(t);S.active=t.id;save();
+  REG=t.region||REG;DAYI=0;TAB='plan';
+  if(!myName()){
+   const names=t.members.map(m=>m.n);
+   const n=prompt('내 이름을 골라주세요 ('+names.join(' / ')+')',names[names.length-1]||'');
+   if(n)setMe(n.trim());
+  }
+  startWatch();toast('공유된 여행을 불러왔습니다');render();
+ }).catch(function(e){document.getElementById('app').innerHTML='<div class="loading">불러오지 못했습니다 · '+e.message+'</div>'})}
+window.joinShared=joinShared;
+
 (function boot(){
  load(); loadFXCache();
  fetch('places.json?v=2').then(r=>r.json()).then(function(d){
@@ -712,8 +832,10 @@ window.render=render;
    const di=t.days.findIndex(x=>x.iso===todayIso());
    if(di>=0){DAYI=di;TDI=di;TAB='today'}else{DAYI=0;TDI=0;TAB='plan'}
   }else{REG=regs[0];TAB='__trips'}
-  render();
-  fetchFX(false).then(function(){render()});
+  const sid=new URLSearchParams(location.search).get('t');
+  if(sid){joinShared(sid)}else{render(); if(t&&t.share){
+   if(window.FB)startWatch(); else window.addEventListener('fb-ready',startWatch,{once:true})}}
+  fetchFX(false).then(function(){if(!sid)render()});
  }).catch(function(){
   document.getElementById('app').innerHTML='<div class="loading">장소 데이터를 불러오지 못했습니다</div>';
  });
