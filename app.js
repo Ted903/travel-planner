@@ -12,7 +12,44 @@ const D2=m=>m>=60?(Math.floor(m/60)+'시간'+(m%60?' '+(m%60)+'분':'')):(m+'분
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const cut=(s,n)=>String(s||'').length>n?String(s).slice(0,n)+'…':String(s||'');
 const uid=()=>Math.random().toString(36).slice(2,9);
-let DB=[]; const P=id=>DB.find(x=>x.i===id);
+let DB=[]; const P=id=>DB.find(x=>x.i===id)||DB.find(x=>x.i===IDALIAS[id]);
+/* ══ 영업시간 ══ */
+const DKEY=['sun','mon','tue','wed','thu','fri','sat'], DNM=['일','월','화','수','목','금','토'];
+function parseHr(s){
+ if(!s)return null;
+ if(/휴무|closed/i.test(s))return 'closed';
+ if(/24\s*시간/.test(s))return 'always';
+ const re=/(오전|오후)?\s*(\d{1,2}):(\d{2})/g;let m,last=null,ts=[];
+ while((m=re.exec(s))){let mer=m[1]||last;last=m[1]||last;let h=+m[2],mi=+m[3];
+  if(mer==='오후'&&h<12)h+=12; if(mer==='오전'&&h===12)h=0; ts.push(h*60+mi)}
+ if(ts.length<2)return null;
+ const out=[];for(let i=0;i+1<ts.length;i+=2){let a=ts[i],b=ts[i+1];if(b<=a)b+=1440;out.push([a,b])}
+ return out.length?out:null}
+function hrOn(p,wd){return p&&p.hr&&p.hr[wd]||''}
+function closedOn(p,wd){return parseHr(hrOn(p,wd))==='closed'}
+function hrFit(p,wd,st,en){
+ const r=parseHr(hrOn(p,wd));
+ if(r==='closed')return 'closed';
+ if(!r||r==='always')return null;
+ for(const g of r){if(st>=g[0]&&en<=g[1])return null}
+ return r.some(g=>st<g[1]&&en>g[0])?'partial':'outside'}
+function wdOfDay(t,i){ if(!t||!t.days||!t.days[i])return null;
+ const d=t.days[i].iso; if(!d)return null;
+ const dt=new Date(d+'T00:00:00'); if(isNaN(dt))return null; return DKEY[dt.getDay()]}
+function wdChips(t){
+ const auto = t? wdOfDay(t,DAYI) : null;
+ const lbl = auto ? ((DAYI+1)+'일차('+DNM[DKEY.indexOf(auto)]+') 영업') : '요일 자동';
+ var h = '<span class="f sm '+(WD==='auto'?'on':'')+'" onclick="A.wd(\'auto\')">'+lbl+'</span>';
+ h += '<span class="f sm '+(WD==='off'?'on':'')+'" onclick="A.wd(\'off\')">요일 무관</span>';
+ for(var i=0;i<DKEY.length;i++){ h += '<span class="f sm '+(WD===DKEY[i]?'on':'')+'" onclick="A.wd(\''+DKEY[i]+'\')">'+DNM[i]+'</span>'; }
+ return h;
+}
+function curWd(t){ return WD==='auto' ? (t?wdOfDay(t,DAYI):null) : (WD==='off'?null:WD); }
+
+function wdIdx(t,i){const w=wdOfDay(t,i);return w?DKEY.indexOf(w):-1}
+/* 별칭: 병합 과정에서 통합된 옛 장소 id */
+const IDALIAS={"my-015":"my-014","edt-012":"my-044","edt-017":"my-149","edt-061":"my-063","edt-063":"edt-041","edt-064":"my-037","edt-072":"my-124","edt-085":"edt-038","edt-107":"my-112","edt-128":"my-114","edt-267":"edt-256","edt-315":"my-181","edt-321":"my-169","edt-323":"my-175","edt-356":"edt-350","edt-411":"edt-210"};
+
 
 /* ══ 환율 (실시간) ══ */
 const FXKEY='travelplanner.fx';
@@ -132,6 +169,46 @@ function moveEst(f,t){if(!f||!t||!f.ll||!t.ll)return{min:15,mode:'이동',km:nul
  const km=hav(f.ll,t.ll)*1.3;
  return km<1.2?{min:Math.max(3,Math.round(km/0.075)),mode:'도보',km}:{min:Math.round(7+km/0.45),mode:km>12?'전철':'지하철',km}}
 
+
+
+/* ══ 그날 휴무 경고 ══ */
+function dayWarn(t,i){
+ if(!t||!t.days[i])return '';
+ const wd=wdOfDay(t,i); if(!wd)return '';
+ const bad=(t.days[i].cands||[]).map(P).filter(function(p){return p&&closedOn(p,wd)});
+ const dn=DNM[DKEY.indexOf(wd)];
+ var h='';
+ if(bad.length){
+  h+='<div class="warnbox">⚠ '+dn+'요일 휴무: '+bad.map(function(p){return esc(p.n)}).join(' · ')+
+     '<div class="ws">다른 날로 옮기거나 빼는 게 좋습니다</div></div>';
+ }
+ const n=(t.days[i].cands||[]).length;
+ if(n>=3) h+='<div class="optbar" onclick="A.opt()">⤢ 동선 순서 정렬 · 현재 '+totalKmOf(t.days[i].cands).toFixed(1)+'km</div>';
+ return h;
+}
+
+/* ══ 동선 최적화 (후보 순서) ══ */
+function totalKmOf(ids){var s=0,prev=null;
+ for(var i=0;i<ids.length;i++){var p=P(ids[i]); if(!p||!p.ll){prev=p;continue}
+  if(prev&&prev.ll)s+=hav(prev.ll,p.ll); prev=p}
+ return s}
+function optimizeDay(){
+ const t=T(); if(!t)return;
+ const D=t.days[DAYI]; const ids=D.cands.slice();
+ if(ids.length<3){toast('후보가 3곳 이상일 때 정렬됩니다');return}
+ const pts=ids.map(P).filter(Boolean);
+ if(pts.some(p=>!p.ll)){toast('좌표 없는 장소가 있어 정렬할 수 없습니다');return}
+ const before=totalKmOf(ids);
+ const rest=ids.slice(1), out=[ids[0]]; var cur=P(ids[0]);
+ while(rest.length){var bi=0,bd=1e9;
+  for(var i=0;i<rest.length;i++){var d=hav(cur.ll,P(rest[i]).ll); if(d<bd){bd=d;bi=i}}
+  cur=P(rest[bi]); out.push(rest.splice(bi,1)[0])}
+ const after=totalKmOf(out);
+ if(after>=before-0.05){toast('이미 최적 순서입니다 ('+before.toFixed(1)+'km)');return}
+ D.cands=out; save(); render();
+ toast('동선 정렬 완료 · '+before.toFixed(1)+'km → '+after.toFixed(1)+'km');
+}
+
 /* ══ 지난 여행 기록 (읽기 전용) ══ */
 const ARCHIVE=[{
  id:'nagoya-2026', title:'나고야 3박 4일', range:'2026. 4. 3 ~ 4. 6', days:4, places:26,
@@ -178,6 +255,7 @@ function mkDays(start,end){
 const todayIso=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 
 /* ══ 화면 상태 ══ */
+let WD='auto';
 let TAB='__trips', DAYI=0, TDI=0, FILT='all', AREA='all', REG='', Q='', LIM=20, PICK=0, FIXFORM=0, mapObj=null, TOAST=null, TT=null;
 const TABS=[['today','🧭','오늘'],['plan','📅','일정'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방']];
 const NOWM=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
@@ -195,6 +273,8 @@ const A={
  pick:()=>{PICK=!PICK;FIXFORM=0;render()},
  fixform:()=>{FIXFORM=!FIXFORM;PICK=0;render()},
  filt:k=>{FILT=k;LIM=20;render()},
+ wd:k=>{WD=k;LIM=20;render()},
+ opt:()=>optimizeDay(),
  area:k=>{AREA=k;LIM=20;render()},
  reg:k=>{REG=k;AREA='all';LIM=20;render()},
  more:()=>{LIM+=20;render()},
@@ -559,6 +639,7 @@ function vPlan(){
    <div class="fbtn sm" onclick="addFixed()">추가</div></div></div>`:'';
  return `<div class="hstack">${t.days.map((d,i)=>`<div class="dc ${i===DAYI?'on':''}" onclick="A.day(${i})">
    <div class="n">${d.n}</div><div class="d">${d.d}</div></div>`).join('')}</div>
+  ${dayWarn(t,DAYI)}
   <div class="sumbar"><div><div class="k">고정</div><div class="v">${D.fixed.length}건</div></div>
    <div><div class="k">후보</div><div class="v">${cands.length}곳</div></div>
    <div><div class="k">빈 시간</div><div class="v">${D2(FREE)}</div></div></div>
@@ -601,6 +682,7 @@ function vPlace(){
  if(AREA!=='all')L2=L2.filter(p=>p.a===AREA);
  if(FILT==='un')L2=L2.filter(p=>!inTrip(p)); else if(FILT!=='all')L2=L2.filter(p=>p.c===FILT);
  if(Q){const q=Q.toLowerCase();L2=L2.filter(p=>(p.n+p.j+p.g+p.d+p.m).toLowerCase().indexOf(q)>=0)}
+ const _wd=curWd(t); if(_wd) L2=L2.filter(p=>!closedOn(p,_wd));
  L2=L2.slice().sort((a,b)=>(b.rt||0)-(a.rt||0)||(b.rv||0)-(a.rv||0));
  const R=DB.filter(p=>p.r===REG);
  const F=[['all','전체',R.length],['un','미배정',R.filter(p=>!inTrip(p)).length],
@@ -609,6 +691,7 @@ function vPlace(){
   ['stay','🏨 숙소',R.filter(p=>p.c==='stay').length]].filter(x=>x[2]>0);
  const regs=[...new Set(DB.map(p=>p.r))].sort((a,b)=>DB.filter(p=>p.r===b).length-DB.filter(p=>p.r===a).length);
  return `<div class="hstack">${regs.map(r=>`<span class="rg ${REG===r?'on':''}" onclick="A.reg('${r}')">${esc(r)} ${DB.filter(p=>p.r===r).length}</span>`).join('')}</div>
+ <div class="hstack">${wdChips(t)}</div>
  <div class="srchbox"><input id="q" value="${esc(Q)}" placeholder="이름 · 메뉴 · 설명 검색" oninput="A.q(this.value)" autocomplete="off">
   ${Q?'<span class="clr" onclick="A.clearq()">✕</span>':''}</div>
  <div class="hstack">${F.map(f=>`<span class="f ${FILT===f[0]?'on':''}" onclick="A.filt('${f[0]}')">${f[1]} ${f[2]}</span>`).join('')}</div>
@@ -618,7 +701,7 @@ function vPlace(){
   return `<div class="pl">
    <div class="r1"><span class="chip" style="background:${c.c}18;color:${c.c}">${c.i}</span><span class="nm">${esc(p.n)}</span></div>
    <div class="info">${p.rt?`<span>★ ${p.rt} (${(p.rv||0).toLocaleString()})</span>`:'<span class="d">평점 없음</span>'}
-    ${p.g?`<span>${esc(p.g)}</span>`:''}${p.pr?`<span>${esc(p.pr)}</span>`:''}<span>약 ${D2(p.du)}</span>${p.ll?'':'<span class="d">좌표 없음</span>'}</div>
+    ${p.g?`<span>${esc(p.g)}</span>`:''}${p.pr?`<span>${esc(p.pr)}</span>`:''}<span>약 ${D2(p.du)}</span>${p.ll?'':'<span class="d">좌표 없음</span>'}${(function(){var w=curWd(t);if(!w||!p.hr||!p.hr[w])return '';return '<span class="hrb">'+DNM[DKEY.indexOf(w)]+' '+esc(p.hr[w])+'</span>'})()}</div>
    ${p.m?`<div class="memo mine">📝 ${esc(p.m)}</div>`:''}
    ${p.d?`<div class="memo">${esc(cut(p.d,100))}</div>`:''}
    <div class="daypick">${t?t.days.map((d,i)=>`<span class="dp ${ds.indexOf(i)>=0?'on':''}" onclick="A.toggle('${p.i}',${i})">${i+1}일</span>`).join(''):'<span class="dphint">여행을 만들면 날짜에 담을 수 있습니다</span>'}
