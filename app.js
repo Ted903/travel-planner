@@ -1,5 +1,9 @@
 /* ══════ 여행 플래너 ══════ */
-const RATE=9.4, W=n=>'₩'+Math.round(n).toLocaleString(), Y=n=>'¥'+Math.round(n).toLocaleString();
+const W=n=>'₩'+Math.round(n).toLocaleString();
+const CURS={JPY:{s:'¥',n:'엔'},USD:{s:'US$',n:'달러'},EUR:{s:'€',n:'유로'},TWD:{s:'NT$',n:'대만달러'},
+ THB:{s:'฿',n:'바트'},VND:{s:'₫',n:'동'},HKD:{s:'HK$',n:'홍콩달러'},CNY:{s:'元',n:'위안'},
+ SGD:{s:'S$',n:'싱가포르달러'},PHP:{s:'₱',n:'페소'},KRW:{s:'₩',n:'원'}};
+const FALLBACK={JPY:8.72,USD:1390,EUR:1510,TWD:43,THB:39,VND:0.053,HKD:178,CNY:192,SGD:1030,PHP:24,KRW:1};
 const CAT={eat:{n:'식사',c:'var(--eat)',i:'🍜'},cafe:{n:'카페',c:'var(--cafe)',i:'☕'},see:{n:'관광',c:'var(--see)',i:'🏯'},
  shop:{n:'쇼핑',c:'var(--shop)',i:'🛍'},stay:{n:'숙소',c:'var(--stay)',i:'🏨'},move:{n:'이동',c:'var(--move)',i:'✈️'}};
 const t2m=s=>{const p=String(s).split(':').map(Number);return p[0]*60+(p[1]||0)};
@@ -10,13 +14,43 @@ const cut=(s,n)=>String(s||'').length>n?String(s).slice(0,n)+'…':String(s||'')
 const uid=()=>Math.random().toString(36).slice(2,9);
 let DB=[]; const P=id=>DB.find(x=>x.i===id);
 
+/* ══ 환율 (실시간) ══ */
+const FXKEY='travelplanner.fx';
+let FX={ts:0,rates:{},utc:'',live:false};
+function loadFXCache(){try{const r=localStorage.getItem(FXKEY);if(r)FX=JSON.parse(r)}catch(e){}}
+function saveFX(){try{localStorage.setItem(FXKEY,JSON.stringify(FX))}catch(e){}}
+function fetchFX(force){
+ const age=Date.now()-(FX.ts||0);
+ if(!force && age<6*3600*1000 && FX.rates && FX.rates.JPY) return Promise.resolve(FX);
+ return fetch('https://open.er-api.com/v6/latest/KRW')
+  .then(r=>r.json())
+  .then(function(j){
+    if(j && j.result==='success' && j.rates){
+      FX={ts:Date.now(),rates:j.rates,utc:j.time_last_update_utc||'',live:true};saveFX()}
+    return FX})
+  .catch(function(){return FX})}
+function rateOf(cur){
+ if(!cur||cur==='KRW')return 1;
+ const r=FX.rates&&FX.rates[cur];
+ return r?1/r:(FALLBACK[cur]||1)}
+function fxAge(){
+ if(!FX.ts)return '기본값';
+ const h=Math.floor((Date.now()-FX.ts)/3600000);
+ return h<1?'방금 갱신':(h<24?h+'시간 전 갱신':Math.floor(h/24)+'일 전 갱신')}
+const CS_=c=>CURS[c]||{s:'',n:c};
+const FMT=(a,cur)=>CS_(cur).s+Math.round(a).toLocaleString();
+const curOf=()=>{const t=T();return (t&&t.cur)||'JPY'};
+function refreshFX(){toast('환율 갱신 중…');
+ fetchFX(true).then(function(){toast(FX.live?'환율 갱신 완료':'갱신 실패 · 저장된 값 사용');render()})}
+window.refreshFX=refreshFX;
+
 function hav(a,b){const R=6371,r=x=>x*Math.PI/180;const dl=r(b[0]-a[0]),dg=r(b[1]-a[1]);
  return 2*R*Math.asin(Math.sqrt(Math.sin(dl/2)**2+Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(dg/2)**2))}
 function moveEst(f,t){if(!f||!t||!f.ll||!t.ll)return{min:15,mode:'이동',km:null};
  const km=hav(f.ll,t.ll)*1.3;
  return km<1.2?{min:Math.max(3,Math.round(km/0.075)),mode:'도보',km}:{min:Math.round(7+km/0.45),mode:km>12?'전철':'지하철',km}}
 
-/* ══ 지난 여행 기록 (읽기 전용 · 앱 내장 · 초기화해도 남음) ══ */
+/* ══ 지난 여행 기록 (읽기 전용) ══ */
 const ARCHIVE=[{
  id:'nagoya-2026', title:'나고야 3박 4일', range:'2026. 4. 3 ~ 4. 6', days:4, places:26,
  spent:1802164, budget:2000000,
@@ -27,7 +61,6 @@ const ARCHIVE=[{
   ['노리타케의 숲',4,'날 좋은 날 커피 한잔'],['미센',2,'꼭 가볼 맛은 아니다']]
 }];
 
-/* ══ 준비물 템플릿 ══ */
 const PREP_TPL=[
  {g:'예약 · 서류',items:[{t:'항공권 발권',s:''},{t:'숙소 예약',s:''},{t:'여행자 보험',s:''},
    {t:'트래블월렛 · 환전',s:''},{t:'e심 · 유심',s:''},{t:'식당 예약',s:''},{t:'티켓 · 바우처 저장',s:''}]},
@@ -46,9 +79,8 @@ function load(){
  if(!S||S.v!==2)S=blank();
  S.trips=S.trips||[];
  S.trips.forEach(t=>{t.days=t.days||[];t.days.forEach(d=>{d.fixed=d.fixed||[];d.cands=d.cands||[];d.done=d.done||{}});
-  t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}]});
- try{localStorage.removeItem('travelplanner.v1')}catch(e){}
-}
+  t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}];t.cur=t.cur||'JPY'});
+ try{localStorage.removeItem('travelplanner.v1')}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장 공간이 부족합니다')}}
 const T=()=>S.trips.find(t=>t.id===S.active)||null;
 
@@ -63,7 +95,7 @@ function mkDays(start,end){
 const todayIso=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 
 /* ══ 화면 상태 ══ */
-let TAB='__trips', DAYI=0, FILT='all', AREA='all', REG='', Q='', LIM=20, PICK=0, FIXFORM=0, mapObj=null, TOAST=null, TT=null;
+let TAB='__trips', DAYI=0, TDI=0, FILT='all', AREA='all', REG='', Q='', LIM=20, PICK=0, FIXFORM=0, mapObj=null, TOAST=null, TT=null;
 const TABS=[['today','🧭','오늘'],['plan','📅','일정'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방']];
 const NOWM=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
 function toast(t){TOAST=t;clearTimeout(TT);paintToast();TT=setTimeout(()=>{TOAST=null;paintToast()},1900)}
@@ -76,6 +108,7 @@ function paintToast(){let el=document.getElementById('toast');
 const A={
  go:k=>{TAB=k;PICK=0;FIXFORM=0;render()},
  day:i=>{DAYI=i;PICK=0;FIXFORM=0;render()},
+ tday:i=>{TDI=i;render()},
  pick:()=>{PICK=!PICK;FIXFORM=0;render()},
  fixform:()=>{FIXFORM=!FIXFORM;PICK=0;render()},
  filt:k=>{FILT=k;LIM=20;render()},
@@ -85,18 +118,18 @@ const A={
  q:v=>{Q=v;LIM=20;render();const el=document.getElementById('q');if(el){el.focus();el.setSelectionRange(v.length,v.length)}},
  clearq:()=>{Q='';LIM=20;render()},
  add:(di,pid)=>{const t=T();if(!t)return;const c=t.days[di].cands;
-  if(!c.includes(pid)){c.push(pid);save();toast(P(pid).n+' → '+t.days[di].n)}render()},
+  if(c.indexOf(pid)<0){c.push(pid);save();toast(P(pid).n+' → '+t.days[di].n)}render()},
  del:(di,pid)=>{const t=T();if(!t)return;const c=t.days[di].cands,i=c.indexOf(pid);
   if(i>-1){c.splice(i,1);save();toast('후보에서 뺐습니다')}render()},
  toggle:(pid,di)=>{const t=T();if(!t){alert('먼저 여행을 만들어주세요');return}
-  t.days[di].cands.includes(pid)?A.del(di,pid):A.add(di,pid)},
+  t.days[di].cands.indexOf(pid)>=0?A.del(di,pid):A.add(di,pid)},
  up:(di,i)=>{const c=T().days[di].cands;if(i>0){const x=c[i-1];c[i-1]=c[i];c[i]=x;save()}render()},
  dn:(di,i)=>{const c=T().days[di].cands;if(i<c.length-1){const x=c[i+1];c[i+1]=c[i];c[i]=x;save()}render()},
  visit:(di,pid)=>{const d=T().days[di];d.done[pid]?delete d.done[pid]:d.done[pid]=m2t(NOWM());save();render()},
  chk:(gi,ii)=>{const it=T().prep[gi].items[ii];it.v=it.v?0:1;save();render()},
  open:id=>{S.active=id;DAYI=0;const t=T();REG=t.region||REG;save();
   const di=t.days.findIndex(d=>d.iso===todayIso());
-  if(di>=0){DAYI=di;TAB='today'}else{TAB='plan'} render()},
+  if(di>=0){DAYI=di;TDI=di;TAB='today'}else{TDI=0;TAB='plan'} render()},
  newtrip:()=>{TAB='__new';render()},
  settings:()=>{TAB='__set';render()},
  archive:id=>{window.__arch=id;TAB='__arch';render()},
@@ -108,18 +141,18 @@ window.A=A;
 /* ══ 여행 만들기 ══ */
 function createTrip(){
  const g=id=>document.getElementById(id);
- const title=g('f_title').value.trim(), region=g('f_region').value,
+ const title=g('f_title').value.trim(), region=g('f_region').value, cur=g('f_cur').value,
   start=g('f_start').value, end=g('f_end').value,
-  mem=g('f_mem').value.trim(), budget=parseInt(String(g('f_budget').value).replace(/[^\d]/g,''))||0;
+  mem=g('f_mem').value.trim(), budget=parseInt(String(g('f_budget').value).replace(/[^0-9]/g,''))||0;
  if(!title)return alert('여행 이름을 입력해주세요');
  if(!start||!end)return alert('출발일과 도착일을 입력해주세요');
  if(new Date(end)<new Date(start))return alert('도착일이 출발일보다 빠릅니다');
  const days=mkDays(start,end);
  if(days.length>21)return alert('최대 21일까지 지원합니다');
  const members=(mem?mem.split(/[,·\/\s]+/).filter(Boolean):['나']).map(n=>({n}));
- const t={id:uid(),title,region,start,end,members,budget,days,exp:[],docs:[],
+ const t={id:uid(),title,region,cur,start,end,members,budget,days,exp:[],docs:[],
   prep:PREP_TPL.map(x=>({g:x.g,items:x.items.map(i=>({t:i.t,s:i.s,v:0}))}))};
- S.trips.push(t);S.active=t.id;DAYI=0;REG=region||REG;TAB='plan';save();
+ S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='plan';save();
  toast(days.length+'일 여행을 만들었습니다');render()}
 function delTrip(id){const t=S.trips.find(x=>x.id===id);if(!t)return;
  if(!confirm('"'+t.title+'" 여행을 삭제합니다.\n일정·후보·지출·준비물이 모두 지워집니다. 계속할까요?'))return;
@@ -134,7 +167,7 @@ function resetAll(){
  if(!confirm('이 기기에 저장된 모든 여행을 지우고 처음 상태로 되돌립니다.\n계속할까요?'))return;
  if(!confirm('정말 전부 지울까요? 되돌릴 수 없습니다.'))return;
  try{localStorage.removeItem(KEY)}catch(e){}
- load();TAB='__trips';DAYI=0;toast('초기화했습니다');render()}
+ load();TAB='__trips';DAYI=0;TDI=0;toast('초기화했습니다');render()}
 Object.assign(window,{createTrip,delTrip,resetTrip,resetAll});
 
 /* ══ 고정 일정 ══ */
@@ -155,13 +188,14 @@ Object.assign(window,{addFixed,delFixed});
 
 /* ══ 지출 · 준비물 · 서류 ══ */
 function addExp(){const t=T();if(!t)return;
+ const c=t.cur||'JPY', cn=CS_(c).n;
  const nm=prompt('지출 항목 (예: 점심 라멘)');if(!nm)return;
- const amt=prompt('금액 — 현지 통화면 숫자만, 원화면 뒤에 W\n(예: 1800  또는  25000W)');if(!amt)return;
- const isW=/w/i.test(amt), n=parseFloat(String(amt).replace(/[^\d.]/g,''));if(!n)return;
+ const raw=prompt('금액 — '+cn+'이면 숫자만, 원화면 뒤에 W\n(예: 1800  또는  25000W)');if(!raw)return;
+ const isW=/w/i.test(raw), n=parseFloat(String(raw).replace(/[^0-9.]/g,''));if(!n)return;
  const who=t.members.length>1?(prompt('결제자 ('+t.members.map(m=>m.n).join(' / ')+')',t.members[0].n)||t.members[0].n):t.members[0].n;
  const cat=prompt('분류 (음식/교통/쇼핑/관광/숙박/항공/기타)','음식')||'기타';
  const pay=confirm('카드로 결제했나요?\n확인 = 카드 / 취소 = 현금')?'카드':'현금';
- t.exp.push(isW?{id:uid(),nm,krw:n,who,cat,pay}:{id:uid(),nm,jpy:n,who,cat,pay});
+ t.exp.push({id:uid(),nm,amt:n,cur:isW?'KRW':c,who,cat,pay});
  save();toast('지출 추가됨');render()}
 function delExp(id){const t=T();if(!confirm('이 지출을 삭제할까요?'))return;
  t.exp=t.exp.filter(e=>e.id!==id);save();render()}
@@ -184,6 +218,8 @@ function dday(t){if(!t)return'';
  if(n>e)return'다녀옴';
  const d=Math.ceil((s-n)/86400000);
  return n>=s?'여행 중':(d>0?'D-'+d:'D-DAY')}
+const eK=e=>{if(e.cur)return e.cur==='KRW'?(e.amt||0):(e.amt||0)*rateOf(e.cur);
+ return (e.krw||0)+(e.jpy||0)*rateOf('JPY')};
 
 /* ══ 여행 목록 · 온보딩 ══ */
 function vTripList(){
@@ -214,7 +250,7 @@ function vTripList(){
  <div class="sec">장소 DB<span class="secr">여행과 무관하게 저장</span></div>
  <div class="lib"><div class="t">전체 ${DB.length}곳 · 좌표 ${DB.filter(p=>p.ll).length}곳</div>
   <div class="s">새 여행을 만들 때 도시를 고르면 그 목록이 후보 풀이 됩니다. 초기화해도 사라지지 않습니다.</div>
-  <div class="row">${Object.entries(rc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span>${esc(k)} ${v}</span>`).join('')}</div></div>
+  <div class="row">${Object.keys(rc).sort((a,b)=>rc[b]-rc[a]).map(k=>`<span>${esc(k)} ${rc[k]}</span>`).join('')}</div></div>
  <div class="setlink" onclick="A.settings()">⚙︎ 설정 · 초기화</div>
  <div style="height:20px"></div>`;
 }
@@ -222,12 +258,16 @@ function vTripList(){
 function vNew(){
  const regs=[...new Set(DB.map(p=>p.r))].sort((a,b)=>DB.filter(p=>p.r===b).length-DB.filter(p=>p.r===a).length);
  const d=new Date(); const t0=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+ const curKeys=['JPY','USD','EUR','TWD','THB','VND','HKD','CNY','SGD','PHP','KRW'];
  return `<div class="form">
   <div class="fld"><label>여행 이름</label><input id="f_title" placeholder="예: 후쿠오카 3박 4일" autocomplete="off"></div>
   <div class="fld"><label>어디로 가나요</label>
    <select id="f_region">${regs.map(r=>`<option value="${esc(r)}">${esc(r)} · 장소 ${DB.filter(p=>p.r===r).length}곳</option>`).join('')}
     <option value="">그 외 (장소 DB 없이 직접)</option></select>
    <div class="hint">고른 도시의 장소 목록이 후보 풀이 됩니다</div></div>
+  <div class="fld"><label>현지 통화</label>
+   <select id="f_cur">${curKeys.map(c=>`<option value="${c}"${c==='JPY'?' selected':''}>${c} · ${CS_(c).n} (${CS_(c).s})</option>`).join('')}</select>
+   <div class="hint">현재 1${CS_('JPY').n} = ${(rateOf('JPY')).toFixed(2)}원 · ${fxAge()}</div></div>
   <div class="frow">
    <div class="fld"><label>출발</label><input id="f_start" type="date" value="${t0}"></div>
    <div class="fld"><label>도착</label><input id="f_end" type="date" value="${t0}"></div></div>
@@ -240,7 +280,7 @@ function vNew(){
   <div class="fnote"><b>만든 다음 순서</b><br>
    ① <b>일정</b> 탭에서 항공·숙소·예약처럼 시간이 정해진 것을 넣습니다<br>
    ② <b>장소</b> 탭에서 가고 싶은 곳을 날짜에 담습니다<br>
-   ③ 앱이 빈 시간을 계산해 그 안에 갈 수 있는 곳을 알려줍니다</div>
+   ③ <b>오늘</b> 탭이 남은 시간에 갈 수 있는 곳을 골라줍니다</div>
  </div>`;
 }
 
@@ -251,6 +291,7 @@ function vSettings(){
    <div class="srow"><span>이름</span><b>${esc(t.title)}</b></div>
    <div class="srow"><span>기간</span><b>${t.start} ~ ${t.end} (${t.days.length}일)</b></div>
    <div class="srow"><span>지역</span><b>${esc(t.region||'미지정')}</b></div>
+   <div class="srow"><span>통화</span><b>${t.cur} · 1${CS_(t.cur).n} = ${rateOf(t.cur).toFixed(2)}원</b></div>
    <div class="srow"><span>인원</span><b>${t.members.map(m=>esc(m.n)).join(', ')}</b></div>
    <div class="srow"><span>예산</span><b>${t.budget?W(t.budget):'미설정'}</b></div>
   </div>
@@ -258,6 +299,14 @@ function vSettings(){
    <em>날짜·인원·예산은 두고 고정 일정·후보·지출·체크만 초기화</em></div>
   <div class="dbtn danger" onclick="delTrip('${t.id}')">이 여행 삭제
    <em>이 여행에 넣은 모든 내용이 사라집니다</em></div>`:'<div class="sec">여행</div><div class="card mrow"><div class="gnone" style="margin:0">선택된 여행이 없습니다</div></div>'}
+ <div class="sec">환율</div>
+ <div class="card mrow">
+  <div class="srow"><span>기준</span><b>1${CS_(curOf()).n} = ${rateOf(curOf()).toFixed(2)}원</b></div>
+  <div class="srow"><span>상태</span><b>${FX.live?'실시간':'기본값'} · ${fxAge()}</b></div>
+  <div class="srow"><span>출처</span><b>exchangerate-api.com</b></div>
+ </div>
+ <div class="dbtn" onclick="refreshFX()" style="color:var(--acc2);border-color:#CBE0DB;background:#F2F8F6">지금 환율 새로고침
+  <em>평소에는 6시간마다 자동으로 갱신되고, 오프라인이면 마지막 값을 씁니다</em></div>
  <div class="sec">전체</div>
  <div class="dbtn danger" onclick="resetAll()">앱 전체 초기화
   <em>이 기기에 저장된 모든 여행을 지우고 처음 상태로</em></div>
@@ -302,9 +351,9 @@ function vPlan(){
  const FREE=G.reduce((a,g)=>a+(g.t-g.f),0);
  let prev=null;const chain=cands.map(p=>{const mv=moveEst(prev,p);prev=p;return{p:p,mv:mv}});
  const NEED=chain.filter(x=>!done[x.p.i]).reduce((a,x)=>a+x.p.du+x.mv.min,0);
- const FX=D.fixed.slice().sort((x,y)=>t2m(x.s)-t2m(y.s));
+ const FX2=D.fixed.slice().sort((x,y)=>t2m(x.s)-t2m(y.s));
  let body='';
- if(!FX.length&&!cands.length){
+ if(!FX2.length&&!cands.length){
   body='<div class="empty">아직 아무것도 없습니다<br><span class="es">항공·숙소·예약처럼 <b>시간이 정해진 것</b>부터 넣어보세요</span></div>';
  }else{
   G.forEach((g,gi)=>{
@@ -314,13 +363,13 @@ function vPlan(){
      ${no.slice(0,1).map(p=>`<span class="no">${esc(cut(p.n,11))}</span>`).join('')}</div>
     <div class="okline">담아둔 후보 ${ok.length}곳이 이 시간에 들어갑니다</div>`
     :'<div class="gnone">담아둔 후보가 없습니다</div>'}</div>`;
-   const a=FX[gi];
+   const a=FX2[gi];
    if(a){const c=CAT[a.cat]||CAT.see;
     body+=`<div class="anch"><div class="tm"><b>${a.s}</b><em>${m2t(t2m(a.s)+a.dur)}</em></div>
      <div style="flex:1"><div class="nm">${c.i} ${esc(a.nm)}</div>${a.why?`<div class="sb">${esc(a.why)}</div>`:''}</div>
      <div class="rm" onclick="delFixed('${a.id}')">✕</div></div>`}
   });
-  FX.slice(G.length).forEach(a=>{const c=CAT[a.cat]||CAT.see;
+  FX2.slice(G.length).forEach(a=>{const c=CAT[a.cat]||CAT.see;
    body+=`<div class="anch"><div class="tm"><b>${a.s}</b><em>${m2t(t2m(a.s)+a.dur)}</em></div>
     <div style="flex:1"><div class="nm">${c.i} ${esc(a.nm)}</div>${a.why?`<div class="sb">${esc(a.why)}</div>`:''}</div>
     <div class="rm" onclick="delFixed('${a.id}')">✕</div></div>`});
@@ -418,46 +467,58 @@ function vPlace(){
 function vToday(){
  const t=T(); if(!t)return vTripList();
  const now=NOWM();
- let di=t.days.findIndex(d=>d.iso===todayIso()); if(di<0)di=DAYI;
- const D=t.days[di]||t.days[0], done=D.done;
- const nextA=D.fixed.map(a=>({s:a.s,nm:a.nm,st:t2m(a.s)})).filter(a=>a.st>now).sort((x,y)=>x.st-y.st)[0];
- const win=nextA?nextA.st-now:Math.max(0,t2m(DAY_END)-now);
+ const realIdx=t.days.findIndex(d=>d.iso===todayIso());
+ const isToday=realIdx>=0;
+ if(isToday && TDI!==realIdx && !window.__tdTouched)TDI=realIdx;
+ const di=Math.min(Math.max(0,TDI),t.days.length-1);
+ const D=t.days[di], done=D.done;
+ const live=isToday&&di===realIdx;
+ const base=live?now:t2m(DAY_START);
+ const nextA=D.fixed.map(a=>({s:a.s,nm:a.nm,st:t2m(a.s),dur:a.dur})).filter(a=>a.st>base).sort((x,y)=>x.st-y.st)[0];
+ const win=nextA?nextA.st-base:Math.max(0,t2m(DAY_END)-base);
  const firstLL=D.cands.map(P).find(p=>p&&p.ll);
  const cur={ll:firstLL?firstLL.ll:null};
  const opts=D.cands.map(P).filter(p=>p&&!done[p.i]).map(p=>{const mv=moveEst(cur,p),need=mv.min+p.du;
-   return Object.assign({},p,{mv:mv,need:need,end:now+need,slack:win-need})}).filter(o=>o.slack>=0).sort((a,b)=>a.slack-b.slack);
+   return Object.assign({},p,{mv:mv,need:need,end:base+need,slack:win-need})}).filter(o=>o.slack>=0).sort((a,b)=>a.slack-b.slack);
+ const tooBig=D.cands.map(P).filter(p=>p&&!done[p.i]).length-opts.length;
  const vis=Object.keys(done).map(id=>({tm:done[id],nm:(P(id)||{n:'-'}).n})).sort((a,b)=>a.tm.localeCompare(b.tm));
- const SP=t.exp.reduce((a,e)=>a+((e.krw||0)+(e.jpy||0)*RATE),0);
+ const SP=t.exp.reduce((a,e)=>a+eK(e),0);
  const left=Math.max(1,t.days.length-di);
- return `<div class="tmode"><div class="lb">${D.n} / ${t.days.length}일 · ${dday(t)}</div>
-  <h2>지금 ${m2t(now)}</h2>
+ return `<div class="tmode">
+  <div class="lb">${live?'여행 중 · 실시간 계산':'미리보기 · '+dday(t)}</div>
+  <h2>${live?'지금 '+m2t(now):D.n+' 하루 보기'}</h2>
   <div class="mt">${D.d} (${D.wd}) · ${esc(t.region||t.title)}</div>
-  <div class="kpis"><div><div class="k">오늘 다닌 곳</div><div class="v">${vis.length}곳</div></div>
-   <div><div class="k">오늘 후보</div><div class="v">${D.cands.length}곳</div></div>
+  <div class="kpis"><div><div class="k">다녀온 곳</div><div class="v">${vis.length}곳</div></div>
+   <div><div class="k">담은 후보</div><div class="v">${D.cands.length}곳</div></div>
    <div><div class="k">하루 예산</div><div class="v">${t.budget?W((t.budget-SP)/left):'—'}</div></div></div></div>
+ <div class="todaynote">${live
+   ?'지금 시각 기준으로 <b>다음 고정 일정까지 남은 시간</b>을 재고, 그 안에 갔다 올 수 있는 후보만 골라 보여줍니다.'
+   :'오늘이 여행 기간이 아니라 <b>미리보기</b>입니다. 여행이 시작되면 현재 시각 기준으로 자동 전환됩니다.'}</div>
+ <div class="hstack" style="padding-top:10px">${t.days.map((d,i)=>`<div class="dc sm ${i===di?'on':''}" onclick="window.__tdTouched=1;A.tday(${i})">
+   <div class="n">${d.n}${i===realIdx?' ·오늘':''}</div><div class="d">${d.d}</div></div>`).join('')}</div>
  ${nextA?`<div class="anchornext"><div class="k">다음 고정 일정</div>
-  <div class="v">${nextA.s} ${esc(nextA.nm)}</div><div class="s">${D2(win)} 남음 — 그때까지는 자유롭게</div></div>`
+  <div class="v">${nextA.s} ${esc(nextA.nm)}</div><div class="s">${live?'지금부터':m2t(base)+'부터'} ${D2(win)} 비어 있음</div></div>`
   :`<div class="anchornext"><div class="k">남은 고정 일정</div><div class="v">없음</div>
-  <div class="s">${D2(win)} 남음 — 전부 자유 시간입니다</div></div>`}
- <div class="nowhd"><span>지금 갈 수 있는 곳</span><em>${opts.length}곳</em></div>
+  <div class="s">${D2(win)} 전부 자유 시간입니다</div></div>`}
+ <div class="nowhd"><span>${live?'지금 갈 수 있는 곳':'이 시간에 갈 수 있는 곳'}</span><em>${opts.length}곳${tooBig>0?' · '+tooBig+'곳은 시간 부족':''}</em></div>
  ${opts.length?opts.slice(0,4).map((o,i)=>{const c=CAT[o.c];return `<div class="opt ${i===0?'best':''}">
    ${i===0?'<div class="tag">시간 딱 맞음</div>':''}
    <div class="nm">${c.i} ${esc(o.n)}</div>
    <div class="meta">${o.rt?`<span>★ ${o.rt}</span>`:''}${o.mv.km!=null?`<span>${o.mv.mode} ${o.mv.min}분</span>`:''}<span>약 ${D2(o.du)}</span>${o.g?`<span>${esc(o.g)}</span>`:''}</div>
-   <span class="calc">지금 출발하면 <b>${m2t(o.end)}</b>에 끝납니다${nextA?' · 다음 일정까지 <b>'+D2(o.slack)+'</b> 여유':''}</span>
+   <span class="calc">${live?'지금':m2t(base)+'에'} 출발하면 <b>${m2t(o.end)}</b>에 끝납니다${nextA?' · 다음 일정까지 <b>'+D2(o.slack)+'</b> 여유':''}</span>
    <div class="row"><button class="p" onclick="A.visit(${di},'${o.i}')">여기로 간다</button>
     <a class="glink" style="flex:1;justify-content:center" href="${esc(o.u)}" target="_blank" rel="noopener">길찾기</a></div></div>`}).join('')
-  :'<div class="empty">일정 탭에서 오늘 후보를 담아주세요</div>'}
- <div class="sec">오늘 지나온 곳</div>
+  :`<div class="empty">${D.cands.length?'남은 시간에 갈 수 있는 곳이 없습니다':'담은 후보가 없습니다'}<br><span class="es">일정 탭에서 후보를 담아주세요</span></div>`}
+ <div class="sec">다녀온 곳</div>
  <div class="card mrow" style="margin-bottom:20px">
   ${vis.length?vis.map(d=>`<div class="tr"><span class="tm">${d.tm}</span><span class="nm">${esc(d.nm)}</span><span class="ok">✓ 방문</span></div>`).join('')
-   :'<div class="gnone" style="margin:0">아직 없습니다. 일정 탭에서 후보를 눌러 방문 체크하세요.</div>'}</div>`;
+   :'<div class="gnone" style="margin:0">"여기로 간다"를 누르면 방문 시각이 기록됩니다.</div>'}</div>`;
 }
 
 /* ══ 지갑 ══ */
-const eK=e=>(e.krw||0)+(e.jpy||0)*RATE;
 function vMoney(){
  const t=T(); if(!t)return vTripList();
+ const C=t.cur||'JPY', rate=rateOf(C);
  const SP=t.exp.reduce((a,e)=>a+eK(e),0), BG=t.budget||0, RM=BG-SP;
  const pct=BG?Math.min(100,SP/BG*100):0;
  let di=t.days.findIndex(d=>d.iso===todayIso()); if(di<0)di=0;
@@ -485,26 +546,28 @@ function vMoney(){
  <div class="card mrow settle"><div style="font-size:12px;font-weight:700;opacity:.85">지금까지 기준</div>
   <div class="res">${Math.abs(ord[0].d)<1?'정산 없음':esc(ord[0].n)+' → '+esc(ord[ord.length-1].n)+' '+W(Math.abs(ord[0].d))}</div>
   <div class="dt">${t.members.map(m=>esc(m.n)+' 결제 '+W(paid[m.n]||0)).join(' · ')}<br>1/N 기준 1인 ${W(fair)}</div></div>`:''}
- <div class="sec">환율 계산기</div>
- <div class="card mrow"><div class="calcrow">
-  <input id="jpy" type="number" inputmode="numeric" value="5000" oninput="calc()">
-  <span style="font-size:14px;font-weight:800;color:var(--sub)">엔 =</span>
-  <div id="krw" style="font-size:19px;font-weight:800;letter-spacing:-.02em"></div></div>
+ <div class="sec">환율 계산기<span class="secr" onclick="refreshFX()">↻ 새로고침</span></div>
+ <div class="card mrow">
+  <div class="fxhd"><b>1${CS_(C).n} = ${rate.toFixed(2)}원</b><span>${FX.live?'실시간':'기본값'} · ${fxAge()}</span></div>
+  <div class="calcrow">
+   <input id="fxin" type="number" inputmode="decimal" value="5000" oninput="calc()">
+   <span style="font-size:14px;font-weight:800;color:var(--sub)">${CS_(C).n} =</span>
+   <div id="krw" style="font-size:19px;font-weight:800;letter-spacing:-.02em"></div></div>
   <div class="cmp" id="cmp"></div></div>
  <div class="sec">지출 내역<span class="secr">${t.exp.length}건</span></div>
  <div class="card mrow" style="margin-bottom:96px">${t.exp.length?t.exp.slice().reverse().map(e=>`<div class="exp">
   <span style="flex:1">${esc(e.nm)}<span class="who">${esc(e.who)}</span><span class="pay" style="background:${e.pay==='현금'?'#FBF4E6':'#EDF2F7'};color:${e.pay==='현금'?'#8A6A22':'#3A6EA5'}">${e.pay}</span></span>
-  <b>${e.jpy?Y(e.jpy):W(e.krw)}</b><span class="rm sm" onclick="delExp('${e.id}')">✕</span></div>`).join('')
+  <b>${e.cur&&e.cur!=='KRW'?FMT(e.amt,e.cur):W(e.amt||e.krw||0)}</b><span class="rm sm" onclick="delExp('${e.id}')">✕</span></div>`).join('')
   :'<div class="gnone" style="margin:0">아직 없습니다. 우하단 ＋ 로 추가하세요.</div>'}</div>
  <button class="fab" onclick="addExp()">＋</button>`;
 }
-function calc(){const el=document.getElementById('jpy');if(!el)return;
- const j=+(el.value||0),base=j*RATE;
+function calc(){const el=document.getElementById('fxin');if(!el)return;
+ const C=curOf(), rate=rateOf(C), v=+(el.value||0), base=v*rate;
  document.getElementById('krw').textContent=W(base);
- const cards=[['트래블월렛',0],['토스 체크',.03],['일반 신용카드',.043],['공항 환전',.055]];
+ const cards=[['트래블월렛 · 트래블로그',0],['토스 체크',0.03],['일반 신용카드',0.043],['공항 환전',0.055]];
  const mn=Math.min.apply(null,cards.map(c=>base*(1+c[1])));
- document.getElementById('cmp').innerHTML=cards.map(c=>{const v=base*(1+c[1]);
-  return `<div class="c ${v===mn?'best':''}"><span>${c[0]}${c[1]?' (+'+(c[1]*100).toFixed(1)+'%)':' (수수료 0)'}</span><b>${W(v)}</b></div>`}).join('')}
+ document.getElementById('cmp').innerHTML=cards.map(c=>{const val=base*(1+c[1]);
+  return `<div class="c ${val===mn?'best':''}"><span>${c[0]}${c[1]?' (+'+(c[1]*100).toFixed(1)+'%)':' (수수료 0)'}</span><b>${W(val)}</b></div>`}).join('')}
 window.calc=calc;
 
 /* ══ 가방 ══ */
@@ -539,7 +602,8 @@ function header(){
  if(TAB==='__arch')return{title:'지난 여행 기록',rt:'✕ 닫기',act:'A.trips()'};
  if(TAB==='__trips')return{title:'내 여행',rt:t?'✕ 닫기':'⚙︎ 설정',act:t?'A.back()':'A.settings()'};
  const m={plan:t?t.title:'일정',place:'장소',today:'오늘',money:'지갑',prep:'가방'};
- const r={plan:dday(t),place:REG?REG+' '+DB.filter(p=>p.r===REG).length+'곳':'',today:'',money:'환율 9.4원/엔',prep:dday(t)};
+ const r={plan:dday(t),place:REG?REG+' '+DB.filter(p=>p.r===REG).length+'곳':'',today:'',
+  money:t?'1'+CS_(t.cur).n+'='+rateOf(t.cur).toFixed(2)+'원':'',prep:dday(t)};
  return{title:m[TAB]||'',rt:(r[TAB]?r[TAB]+' · ':'')+'내 여행',act:'A.trips()'}}
 function render(){
  const app=document.getElementById('app'), t=T();
@@ -561,7 +625,7 @@ window.render=render;
 
 /* ══ 부팅 ══ */
 (function boot(){
- load();
+ load(); loadFXCache();
  fetch('places.json?v=2').then(r=>r.json()).then(function(d){
   DB=d;
   const t=T();
@@ -569,9 +633,10 @@ window.render=render;
   if(t){
    REG=t.region||regs[0];
    const di=t.days.findIndex(x=>x.iso===todayIso());
-   if(di>=0){DAYI=di;TAB='today'}else{DAYI=0;TAB='plan'}
+   if(di>=0){DAYI=di;TDI=di;TAB='today'}else{DAYI=0;TDI=0;TAB='plan'}
   }else{REG=regs[0];TAB='__trips'}
   render();
+  fetchFX(false).then(function(){render()});
  }).catch(function(){
   document.getElementById('app').innerHTML='<div class="loading">장소 데이터를 불러오지 못했습니다</div>';
  });
