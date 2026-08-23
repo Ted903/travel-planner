@@ -258,7 +258,7 @@ const todayIso=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezone
 let WD='auto';
 let QT=null, QCOMP=false, TAGOPEN=null;
 let TAB='__trips', DAYI=0, TDI=0, FILT='all', AREA='all', REG='', Q='', LIM=20, PICK=0, FIXFORM=0, mapObj=null, TOAST=null, TT=null;
-const TABS=[['today','🧭','오늘'],['plan','📅','일정'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방']];
+const TABS=[['day','📋','하루'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방']];
 const NOWM=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
 function toast(t){TOAST=t;clearTimeout(TT);paintToast();TT=setTimeout(()=>{TOAST=null;paintToast()},1900)}
 function paintToast(){let el=document.getElementById('toast');
@@ -269,6 +269,8 @@ function paintToast(){let el=document.getElementById('toast');
 /* ══ 액션 ══ */
 const A={
  go:k=>{TAB=k;PICK=0;FIXFORM=0;render()},
+ edit:()=>{EDIT=EDIT?0:1;PICK=0;FIXFORM=0;render()},
+ adv:()=>{ADV=ADV?0:1;render()},
  day:i=>{DAYI=i;PICK=0;FIXFORM=0;render()},
  tday:i=>{TDI=i;render()},
  pick:()=>{PICK=!PICK;FIXFORM=0;render()},
@@ -295,11 +297,11 @@ const A={
  chk:(gi,ii)=>{const it=T().prep[gi].items[ii];it.v=it.v?0:1;save();render()},
  open:id=>{S.active=id;DAYI=0;const t=T();REG=t.region||REG;save();
   const di=t.days.findIndex(d=>d.iso===todayIso());
-  if(di>=0){DAYI=di;TDI=di;TAB='today'}else{TDI=0;TAB='plan'} render()},
+  if(di>=0){DAYI=di;TDI=di}else{TDI=0} TAB='day'; render()},
  newtrip:()=>{TAB='__new';render()},
  settings:()=>{TAB='__set';render()},
  archive:id=>{window.__arch=id;TAB='__arch';render()},
- back:()=>{TAB=S.active?'plan':'__trips';render()},
+ back:()=>{TAB=S.active?'day':'__trips';render()},
  trips:()=>{TAB='__trips';render()}
 };
 window.A=A;
@@ -321,7 +323,7 @@ function createTrip(){
  const members=(mem?mem.split(/[,\u00b7\/\s]+/).filter(Boolean):['나']).map(n=>({n:n,b:mb[n]||0}));
  const t={id:uid(),title,region,cur,start,end,members,budget,split:'even',days,exp:[],docs:[],
   prep:PREP_TPL.map(x=>({g:x.g,items:x.items.map(i=>({t:i.t,s:i.s,v:0}))}))};
- S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='plan';save();
+ S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='day';EDIT=1;save();
  toast(days.length+'일 여행을 만들었습니다');render()}
 function delTrip(id){const t=S.trips.find(x=>x.id===id);if(!t)return;
  if(!confirm('"'+t.title+'" 여행을 삭제합니다.\n일정·후보·지출·준비물이 모두 지워집니다. 계속할까요?'))return;
@@ -989,8 +991,213 @@ function vPrep(){
  ${PF?vPFForm():''}`;
 }
 
+/* ══ 하루 시간표 ══ */
+const SECT=[['am','오전','🌤',8*60,12*60],['pm','오후','☀️',12*60,18*60],['nt','밤','🌙',18*60,22*60]];
+const MEALI={bf:'🍳',ln:'🍚',dn:'🍺',sn:'🍡'};
+const MEALN={bf:'아침',ln:'점심',dn:'저녁',sn:'간식'};
+const DEFMEAL={am:['bf'],pm:['ln','sn'],nt:['dn']};
+let EDIT=0, ADV=0;
+
+function secOfTime(m){for(const s of SECT){if(m>=s[3]&&m<s[4])return s[0]}return m<8*60?'am':'nt'}
+function tagS(D,pid){return ((D.tag&&D.tag[pid])||{}).s||''}
+function tagM(D,pid){return ((D.tag&&D.tag[pid])||{}).m||''}
+
+function dayCard(D,p,edit){
+ const dn=D.done[p.i], c=CAT[p.c];
+ return '<div class="dcard'+(dn?' dn':'')+'" data-pid="'+p.i+'">'+
+  (edit?'<span class="dh">⠿</span>':'')+
+  '<div class="dbody" onclick="A.visit('+DAYI+',\''+p.i+'\')">'+
+   '<div class="dnm">'+c.i+' '+esc(p.n)+(dn?'<span class="dvis">✓ '+dn+'</span>':'')+'</div>'+
+   '<div class="dmeta">'+(p.rt?'<span>★ '+p.rt+'</span>':'')+'<span>약 '+D2(p.du)+'</span>'+(p.g?'<span>'+esc(p.g)+'</span>':'')+'</div>'+
+   (p.m?'<div class="dmemo">📝 '+esc(p.m)+'</div>':'')+
+  '</div>'+
+  (edit?'<span class="dx" onclick="event.stopPropagation();A.del('+DAYI+',\''+p.i+'\')">✕</span>':'')+
+ '</div>'}
+
+function dayZone(D,s,m,items,edit){
+ const lab=m?(MEALI[m]+' '+MEALN[m]):'그 외';
+ const cls=m?'dzone meal':'dzone etc';
+ if(!items.length && !edit && m) return '';
+ return '<div class="'+cls+'" data-s="'+s+'" data-m="'+m+'">'+
+  '<div class="zl">'+lab+(items.length?'<em>'+items.length+'</em>':'')+'</div>'+
+  items.map(p=>dayCard(D,p,edit)).join('')+
+  (items.length?'':'<div class="zempty">'+(edit?'여기로 끌어다 놓기':'비어 있음')+'</div>')+
+ '</div>'}
+
+function vDay(){
+ const t=T(); if(!t)return vTripList();
+ const D=t.days[DAYI]||t.days[0];
+ D.tag=D.tag||{};
+ const edit=!!EDIT;
+ const cands=D.cands.map(P).filter(Boolean);
+ const G=gapsOf(D), FREE=G.reduce((a,g)=>a+(g.t-g.f),0);
+ const fixed=D.fixed.slice().sort((a,b)=>t2m(a.s)-t2m(b.s));
+
+ let body='';
+ SECT.forEach(function(sc){
+  const key=sc[0];
+  const inSec=cands.filter(p=>tagS(D,p.i)===key);
+  const fx=fixed.filter(f=>secOfTime(t2m(f.s))===key);
+  let meals=DEFMEAL[key].slice();
+  ['bf','ln','dn','sn'].forEach(function(mm){
+   if(meals.indexOf(mm)<0 && inSec.some(p=>tagM(D,p.i)===mm))meals.push(mm)});
+  if(edit && meals.indexOf('sn')<0)meals.push('sn');
+  const used={}; meals.forEach(m=>used[m]=1);
+  const etc=inSec.filter(p=>!used[tagM(D,p.i)]||!tagM(D,p.i));
+  const secTot=inSec.reduce((a,p)=>a+p.du,0);
+  body+='<div class="dsec s-'+key+'">'+
+   '<div class="dsh"><span class="ic">'+sc[2]+'</span><span class="nm">'+sc[1]+'</span>'+
+    '<span class="rt">'+(inSec.length?inSec.length+'곳 · '+D2(secTot):'비어 있음')+'</span></div>'+
+   fx.map(f=>{const cc=CAT[f.cat]||CAT.see;
+     return '<div class="dfix"><span class="tm">'+f.s+'</span><span class="fn">'+cc.i+' '+esc(f.nm)+'</span>'+
+      (f.why?'<span class="fw">'+esc(f.why)+'</span>':'')+
+      (edit?'<span class="dx" onclick="delFixed(\''+f.id+'\')">✕</span>':'<span class="lk">🔒</span>')+'</div>'}).join('')+
+   meals.map(m=>dayZone(D,key,m,inSec.filter(p=>tagM(D,p.i)===m),edit)).join('')+
+   dayZone(D,key,'',etc,edit)+
+  '</div>';
+ });
+ const un=cands.filter(p=>!tagS(D,p.i));
+ if(un.length||edit){
+  body+='<div class="dsec s-un"><div class="dsh"><span class="ic">📥</span><span class="nm">미배치</span>'+
+   '<span class="rt">'+(un.length?un.length+'곳':'없음')+'</span></div>'+
+   dayZone(D,'','',un,edit)+'</div>';
+ }
+
+ const fixform=FIXFORM?'<div class="picker"><div class="ph">'+D.n+' · 고정 일정 추가<span onclick="A.fixform()">닫기 ✕</span></div>'+
+  '<div class="form inner">'+
+   '<div class="fld"><label>무엇</label><input id="x_nm" placeholder="예: 진에어 LJ221 / 호텔 체크인 / 식당 예약" autocomplete="off"></div>'+
+   '<div class="frow"><div class="fld"><label>시작</label><input id="x_s" type="time" value="12:00"></div>'+
+    '<div class="fld"><label>소요 (분)</label><input id="x_dur" type="number" inputmode="numeric" value="60"></div></div>'+
+   '<div class="frow"><div class="fld"><label>분류</label><select id="x_cat">'+
+     '<option value="move">✈️ 이동</option><option value="stay">🏨 숙소</option><option value="eat">🍜 식사</option>'+
+     '<option value="see">🏯 관광</option><option value="shop">🛍 쇼핑</option><option value="cafe">☕ 카페</option></select></div>'+
+    '<div class="fld"><label>메모</label><input id="x_why" placeholder="예약번호 등" autocomplete="off"></div></div>'+
+   '<div class="fbtn sm" onclick="addFixed()">추가</div></div></div>':'';
+
+ const pool=DB.filter(p=>p.r===t.region&&D.cands.indexOf(p.i)<0)
+  .sort((a,b)=>(b.rt||0)-(a.rt||0)||(b.rv||0)-(a.rv||0)).slice(0,12);
+ const picker=PICK?'<div class="picker"><div class="ph">'+D.n+'에 담기 · 평점순<span onclick="A.pick()">닫기 ✕</span></div>'+
+  (pool.length?pool.map(function(p){const c=CAT[p.c];
+   const other=t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0);
+   return '<div class="pk" onclick="A.add('+DAYI+',\''+p.i+'\')"><div style="flex:1">'+
+    '<div class="nm">'+c.i+' '+esc(p.n)+'</div><div class="meta"><span>약 '+D2(p.du)+'</span>'+(p.rt?'<span>★ '+p.rt+'</span>':'')+(p.g?'<span>'+esc(p.g)+'</span>':'')+
+    (other.length?'<span style="color:var(--acc2);font-weight:800">'+other.map(i=>t.days[i].n).join('·')+'에 있음</span>':'')+'</div></div>'+
+    '<div class="plus">＋</div></div>'}).join('')
+   :'<div class="pk"><div style="flex:1;font-size:13px;color:var(--sub)">이 지역 장소 DB가 없습니다</div></div>')+
+  '<div class="pkmore" onclick="A.go(\'place\')">장소 탭에서 검색해서 고르기 →</div></div>':'';
+
+ const adv=ADV?'<div class="advbox">'+
+   '<div class="advhd">빈 시간</div>'+
+   (G.length?G.map(function(g){
+     const rest=cands.filter(p=>!D.done[p.i]);
+     const ok=rest.filter(p=>fitsIn(p,g));
+     return '<div class="gap"><div class="t"><b>'+m2t(g.f)+' ~ '+m2t(g.t)+'</b><span>'+(slotOfGap(g)?slotOfGap(g)+' · ':'')+D2(g.t-g.f)+'</span></div>'+
+      '<div class="okline">후보 '+ok.length+'곳이 이 시간에 들어갑니다</div></div>'}).join('')
+    :'<div class="gnone" style="margin:0 16px">고정 일정이 하루를 꽉 채우고 있습니다</div>')+
+   '<div class="advhd">동선 지도</div>'+
+   (cands.filter(p=>p.ll).length?'<div class="mapbox"><div id="map"></div></div>':'<div class="gnone" style="margin:0 16px 14px">담은 장소에 좌표가 없습니다</div>')+
+  '</div>':'';
+
+ return '<div class="hstack">'+t.days.map(function(d,i){
+    return '<div class="dc '+(i===DAYI?'on':'')+'" onclick="A.day('+i+')"><div class="n">'+d.n+'</div><div class="d">'+d.d+'</div></div>'}).join('')+'</div>'+
+  '<div class="daybar"><div class="dsum">고정 <b>'+D.fixed.length+'</b> · 담은 곳 <b>'+cands.length+'</b> · 빈 시간 <b>'+D2(FREE)+'</b></div>'+
+   '<div class="ebtn '+(edit?'on':'')+'" onclick="A.edit()">'+(edit?'✓ 완료':'✎ 편집')+'</div></div>'+
+  (edit?'<div class="ehint">카드를 <b>길게 누르면</b> 들어 올려집니다. 원하는 칸으로 끌어다 놓으세요.</div>':'')+
+  dayWarn(t,DAYI)+
+  body+
+  (edit?'<div class="addbtn" onclick="A.pick()">'+(PICK?'✕ 닫기':'＋ 장소에서 담기')+'</div>'+picker+
+        '<div class="addbtn dark" onclick="A.fixform()">'+(FIXFORM?'✕ 닫기':'＋ 고정 일정 추가')+'</div>'+fixform:'')+
+  '<div class="advtog" onclick="A.adv()">'+(ADV?'▴ 빈 시간 · 동선 지도 닫기':'▾ 빈 시간 · 동선 지도')+'</div>'+adv+
+  '<div style="height:20px"></div>'}
+
+/* ── 길게 눌러 드래그 ── */
+let DRAG=null;
+function dayDragBind(){
+ const root=document.getElementById('main'); if(!root)return;
+ root.querySelectorAll('.dcard').forEach(function(el){
+  el.addEventListener('pointerdown',function(e){pressStart(e,el)});
+ });
+}
+function pressStart(e,el){
+ if(!EDIT)return;
+ if(e.pointerType==='mouse'&&e.button!==0)return;
+ const pid=el.getAttribute('data-pid');
+ const sx=e.clientX, sy=e.clientY;
+ let dragging=false, ghost=null, gx=0, gy=0, timer=null;
+ function stopScroll(ev){if(dragging)ev.preventDefault()}
+ function clearHi(){document.querySelectorAll('.dzone.hi').forEach(z=>z.classList.remove('hi'));
+  const ln=document.getElementById('dropline'); if(ln)ln.remove()}
+ function hi(x,y){
+  clearHi();
+  const under=document.elementFromPoint(x,y); if(!under)return null;
+  const z=under.closest('.dzone'); if(!z)return null;
+  z.classList.add('hi');
+  const cards=[...z.querySelectorAll('.dcard')].filter(c=>c!==el);
+  let before=null;
+  for(const c of cards){const r=c.getBoundingClientRect(); if(y<r.top+r.height/2){before=c;break}}
+  const ln=document.createElement('div'); ln.id='dropline'; ln.className='dropline';
+  if(before)z.insertBefore(ln,before); else z.appendChild(ln);
+  return {z:z,before:before?before.getAttribute('data-pid'):null};
+ }
+ let target=null;
+ function onMove(ev){
+  if(!dragging){
+   if(Math.abs(ev.clientX-sx)>10||Math.abs(ev.clientY-sy)>10){clearTimeout(timer);done(false)}
+   return;
+  }
+  ev.preventDefault();
+  ghost.style.left=(ev.clientX-gx)+'px';
+  ghost.style.top=(ev.clientY-gy)+'px';
+  target=hi(ev.clientX,ev.clientY);
+ }
+ function onUp(ev){
+  if(dragging&&target){
+   const s=target.z.getAttribute('data-s'), m=target.z.getAttribute('data-m');
+   applyDrop(pid,s,m,target.before);
+  }
+  done(dragging);
+ }
+ function done(re){
+  clearTimeout(timer);
+  document.removeEventListener('pointermove',onMove);
+  document.removeEventListener('pointerup',onUp);
+  document.removeEventListener('pointercancel',onUp);
+  document.removeEventListener('touchmove',stopScroll);
+  if(ghost)ghost.remove();
+  el.classList.remove('lifted');
+  document.body.classList.remove('dragging');
+  clearHi(); DRAG=null;
+  if(re)render();
+ }
+ timer=setTimeout(function(){
+  dragging=true; DRAG=pid;
+  try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}
+  const r=el.getBoundingClientRect(); gx=sx-r.left; gy=sy-r.top;
+  ghost=el.cloneNode(true); ghost.className='dcard ghost';
+  ghost.style.width=r.width+'px'; ghost.style.left=r.left+'px'; ghost.style.top=r.top+'px';
+  document.body.appendChild(ghost);
+  el.classList.add('lifted');
+  document.body.classList.add('dragging');
+ },380);
+ document.addEventListener('pointermove',onMove,{passive:false});
+ document.addEventListener('pointerup',onUp);
+ document.addEventListener('pointercancel',onUp);
+ document.addEventListener('touchmove',stopScroll,{passive:false});
+}
+function applyDrop(pid,s,m,beforePid){
+ const D=T().days[DAYI]; D.tag=D.tag||{};
+ D.tag[pid]={s:s||'',m:m||''};
+ const c=D.cands, i=c.indexOf(pid); if(i>=0)c.splice(i,1);
+ let idx=c.length;
+ if(beforePid){const bi=c.indexOf(beforePid); if(bi>=0)idx=bi}
+ else{let last=-1;
+  c.forEach(function(id,k){const tg=D.tag[id]||{}; if((tg.s||'')===(s||'')&&(tg.m||'')===(m||''))last=k});
+  idx=last>=0?last+1:c.length}
+ c.splice(idx,0,pid); save(); toast('옮겼습니다')}
+Object.assign(window,{vDay,dayDragBind,applyDrop});
+
 /* ══ 렌더 ══ */
-const V={plan:vPlan,place:vPlace,today:vToday,money:vMoney,prep:vPrep,
+const V={day:vDay,plan:vDay,today:vDay,place:vPlace,money:vMoney,prep:vPrep,
  __trips:vTripList,__new:vNew,__set:vSettings,__arch:vArchive};
 function header(){
  const t=T();
@@ -998,13 +1205,13 @@ function header(){
  if(TAB==='__set')return{title:'설정',rt:'✕ 닫기',act:'A.back()'};
  if(TAB==='__arch')return{title:'지난 여행 기록',rt:'✕ 닫기',act:'A.trips()'};
  if(TAB==='__trips')return{title:'내 여행',rt:t?'✕ 닫기':'⚙︎ 설정',act:t?'A.back()':'A.settings()'};
- const m={plan:t?t.title:'일정',place:'장소',today:'오늘',money:'지갑',prep:'가방'};
- const r={plan:dday(t),place:REG?REG+' '+DB.filter(p=>p.r===REG).length+'곳':'',today:'',
+ const m={day:t?t.title:'하루',place:'장소',money:'지갑',prep:'가방'};
+ const r={day:dday(t),place:REG?REG+' '+DB.filter(p=>p.r===REG).length+'곳':'',
   money:t?'1'+CS_(t.cur).n+'='+rateOf(t.cur).toFixed(2)+'원':'',prep:dday(t)};
  return{title:m[TAB]||'',rt:(r[TAB]?r[TAB]+' · ':'')+'내 여행',act:'A.trips()'}}
 function render(){
  const app=document.getElementById('app'), t=T();
- if(!t&&['plan','today','money','prep'].indexOf(TAB)>=0)TAB='__trips';
+ if(!t&&['day','plan','today','money','prep'].indexOf(TAB)>=0)TAB='__trips';
  const H=header();
  const showTabs=['__new','__arch'].indexOf(TAB)<0;
  const prevMain=document.getElementById('main');
@@ -1015,8 +1222,8 @@ function render(){
   <main id="main" class="${showTabs?'':'notab'}">${(V[TAB]||vTripList)()}</main>
   ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}`;
  const m=document.getElementById('main');
- if(['plan','place'].indexOf(TAB)>=0)m.scrollTop=sc;
- if(TAB==='plan')drawMap();
+ if(['day','place'].indexOf(TAB)>=0)m.scrollTop=sc;
+ if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
  if(TAB==='money')calc();
 }
 window.render=render;
@@ -1025,14 +1232,14 @@ window.render=render;
 function joinShared(sid){
  if(!window.FB){window.addEventListener('fb-ready',function(){joinShared(sid)},{once:true});return}
  const exist=S.trips.find(x=>x.share===sid);
- if(exist){S.active=exist.id;DAYI=0;TAB='plan';startWatch();render();return}
+ if(exist){S.active=exist.id;DAYI=0;TAB='day';startWatch();render();return}
  document.getElementById('app').innerHTML='<div class="loading">공유된 여행을 불러오는 중…</div>';
  window.FB.pull(sid).then(function(r){
   if(!r||!r.trip){document.getElementById('app').innerHTML='<div class="loading">링크가 잘못되었거나 삭제된 여행입니다</div>';return}
   const t=Object.assign({},r.trip,{id:uid(),share:sid});
   t.days=t.days||[];t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}];
   S.trips.push(t);S.active=t.id;save();
-  REG=t.region||REG;DAYI=0;TAB='plan';
+  REG=t.region||REG;DAYI=0;TAB='day';
   if(!myName()){
    const names=t.members.map(m=>m.n);
    const n=prompt('내 이름을 골라주세요 ('+names.join(' / ')+')',names[names.length-1]||'');
@@ -1051,7 +1258,7 @@ function joinByCode(){
  v=v.replace(/[^a-z0-9]/gi,'');
  if(v.length<16){toast('코드가 올바르지 않습니다');return}
  const exist=S.trips.find(function(x){return x.share===v});
- if(exist){S.active=exist.id;DAYI=0;TAB='plan';save();startWatch();toast('이미 연결된 여행입니다');render();return}
+ if(exist){S.active=exist.id;DAYI=0;TAB='day';save();startWatch();toast('이미 연결된 여행입니다');render();return}
  toast('불러오는 중…');
  joinShared(v);
 }
@@ -1071,7 +1278,7 @@ Object.assign(window,{joinByCode,copyCode});
   if(t){
    REG=t.region||regs[0];
    const di=t.days.findIndex(x=>x.iso===todayIso());
-   if(di>=0){DAYI=di;TDI=di;TAB='today'}else{DAYI=0;TDI=0;TAB='plan'}
+   if(di>=0){DAYI=di;TDI=di}else{DAYI=0;TDI=0} TAB='day';
   }else{REG=regs[0];TAB='__trips'}
   const sid=new URLSearchParams(location.search).get('t');
   if(sid){joinShared(sid)}else{render(); if(t&&t.share){

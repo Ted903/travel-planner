@@ -366,6 +366,55 @@ main.notab{padding-bottom:24px}
 .tagpick .tc.m.on{background:var(--gold);border-color:var(--gold);color:#fff}
 .tagpick .th{font-size:10.5px;color:var(--dim);font-weight:600}
 
+
+.daybar{display:flex;align-items:center;justify-content:space-between;margin:0 16px 10px;gap:10px}
+.daybar .dsum{font-size:12.5px;color:var(--sub);font-weight:700}
+.daybar .dsum b{color:var(--ink);font-weight:800}
+.ebtn{flex:0 0 auto;font-size:13px;font-weight:800;border:1px solid var(--line);background:#fff;border-radius:11px;padding:9px 14px;min-height:40px;display:flex;align-items:center;color:var(--sub)}
+.ebtn.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.ehint{margin:0 16px 12px;background:#FBF6EC;border:1px solid #EFE2C8;border-radius:11px;padding:10px 12px;font-size:12px;color:#7A5F22;line-height:1.55}
+.dsec{margin:0 16px 14px;border:2px solid var(--line);border-radius:18px;background:rgba(255,255,255,.5);overflow:hidden}
+.dsec.s-am{border-color:#E3DCCB}
+.dsec.s-pm{border-color:#E8D6C6}
+.dsec.s-nt{border-color:#D6D8E4}
+.dsec.s-un{border-color:#DED8CE;border-style:dashed}
+.dsh{display:flex;align-items:center;gap:8px;padding:12px 14px;background:rgba(255,255,255,.85);border-bottom:1px solid var(--line)}
+.dsh .ic{font-size:16px}
+.dsh .nm{font-size:15.5px;font-weight:800;letter-spacing:-.02em;flex:1}
+.dsh .rt{font-size:11.5px;font-weight:700;color:var(--sub)}
+.dfix{display:flex;align-items:center;gap:9px;margin:10px 12px 0;background:#17130F;color:#fff;border-radius:12px;padding:11px 12px}
+.dfix .tm{font-size:13px;font-weight:800;flex:0 0 44px}
+.dfix .fn{font-size:14px;font-weight:800;flex:1;letter-spacing:-.02em}
+.dfix .fw{font-size:11px;opacity:.6}
+.dfix .lk{font-size:12px;opacity:.5}
+.dfix .dx{background:rgba(255,255,255,.15);color:#fff}
+.dzone{margin:10px 12px;border-radius:13px;padding:8px 9px;background:rgba(255,255,255,.6);border:1.5px dashed transparent;transition:background .12s}
+.dzone.meal{background:#FBF7EF;border-color:#EFE4D2}
+.dzone.etc{background:transparent;border-color:transparent;padding:2px 0;margin:6px 12px}
+.dzone.hi{background:#E9F2F0;border-color:var(--acc2)}
+.dzone .zl{font-size:11.5px;font-weight:800;color:var(--sub);padding:2px 4px 7px;display:flex;align-items:center;gap:6px}
+.dzone .zl em{font-style:normal;font-size:10px;background:#EFEAE2;border-radius:10px;padding:1px 6px;color:var(--sub)}
+.dzone.etc .zl{color:var(--dim)}
+.zempty{font-size:11.5px;color:var(--dim);font-weight:700;text-align:center;padding:12px 0}
+.dcard{display:flex;align-items:flex-start;gap:9px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 11px;margin-bottom:7px;touch-action:pan-y}
+.dcard:last-child{margin-bottom:0}
+.dcard.dn{opacity:.5}
+.dcard.dn .dnm{text-decoration:line-through}
+.dcard.lifted{opacity:.25}
+.dcard.ghost{position:fixed;z-index:200;pointer-events:none;box-shadow:0 12px 28px -6px rgba(0,0,0,.35);transform:scale(1.03);margin:0;opacity:1}
+.dcard .dh{flex:0 0 20px;color:#CFC7BC;font-size:15px;line-height:1.3;cursor:grab;touch-action:none}
+.dcard .dbody{flex:1;min-width:0}
+.dcard .dnm{font-size:14.5px;font-weight:800;letter-spacing:-.02em;line-height:1.35}
+.dcard .dvis{font-size:10.5px;font-weight:800;color:var(--acc2);margin-left:7px}
+.dcard .dmeta{font-size:11px;color:var(--sub);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
+.dcard .dmemo{font-size:11.5px;color:#7A5F22;background:#FBF6EC;border-radius:8px;padding:6px 8px;margin-top:6px;line-height:1.45}
+.dcard .dx{flex:0 0 28px;height:28px;border-radius:9px;background:#F4F1EB;color:#9A938A;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.dropline{height:3px;background:var(--acc2);border-radius:3px;margin:4px 2px}
+body.dragging{overflow:hidden;user-select:none;-webkit-user-select:none}
+.advtog{margin:6px 16px 10px;text-align:center;font-size:12.5px;font-weight:800;color:var(--sub);padding:13px;border:1px solid var(--line);border-radius:13px;background:#fff;min-height:46px}
+.advbox{margin-bottom:10px}
+.advhd{font-size:12px;font-weight:800;color:var(--sub);margin:14px 16px 8px}
+
 .loading{display:flex;align-items:center;justify-content:center;height:100dvh;font-size:14px;font-weight:700;color:var(--sub)}
 
 .hrb{background:#E6F1EA;color:#0E6B5E;border-radius:5px;padding:2px 6px;font-weight:700}
@@ -378,8 +427,8 @@ main.notab{padding-bottom:24px}
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=10"></script>
-<script type="module" src="sync.js?v=10"></script>
+<script src="app.js?v=11"></script>
+<script type="module" src="sync.js?v=11"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
