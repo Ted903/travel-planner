@@ -345,19 +345,13 @@ main.notab{padding-bottom:24px}
 .linkbox{margin-top:10px;background:#F4F1EB;border-radius:10px;padding:11px 12px;font-size:11.5px;color:var(--sub);word-break:break-all;font-weight:600;line-height:1.5}
 
 .loading{display:flex;align-items:center;justify-content:center;height:100dvh;font-size:14px;font-weight:700;color:var(--sub)}
-
-.hrb{background:#E6F1EA;color:#0E6B5E;border-radius:5px;padding:2px 6px;font-weight:700}
-.warnbox{background:#FBEDEA;color:#C0392B;border-radius:11px;padding:11px 13px;font-size:12.5px;font-weight:700;line-height:1.55;margin-bottom:10px}
-.warnbox .ws{font-weight:600;color:#8E5049;font-size:11.5px;margin-top:4px}
-.optbar{background:#EAF3F0;color:#0E6B5E;border-radius:11px;padding:10px 13px;font-size:12.5px;font-weight:800;margin-bottom:10px;text-align:center}
-.optbar:active{opacity:.6}
 </style>
 </head>
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=7"></script>
-<script type="module" src="sync.js?v=7"></script>
+<script src="app.js?v=6"></script>
+<script type="module" src="sync.js?v=6"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
