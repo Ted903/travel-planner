@@ -581,25 +581,7 @@ Object.assign(window,{mkBudRows,sumBud});
 
 function vSettings(){
  const t=T();
- return `${t?`<div class="sec">이 여행</div>
-  <div class="card mrow">
-   <div class="srow"><span>이름</span><b>${esc(t.title)}</b></div>
-   <div class="srow"><span>기간</span><b>${t.start} ~ ${t.end} (${t.days.length}일)</b></div>
-   <div class="srow"><span>지역</span><b>${esc(t.region||'미지정')}</b></div>
-   <div class="srow"><span>통화</span><b>${t.cur} · 1${CS_(t.cur).n} = ${rateOf(t.cur).toFixed(2)}원</b></div>
-   ${t.members.map(m=>`<div class="srow"><span>${esc(m.n)} 예산</span><b>${W(m.b||0)} <span class="edit" onclick="editBud('${esc(m.n)}')">수정</span></b></div>`).join('')}
-   <div class="srow"><span>공동 예산 합계</span><b>${W(t.members.reduce((a,m)=>a+(m.b||0),0))}</b></div>
-  </div>
-  <div class="sec">정산 방식</div>
-  <div class="card mrow"><div class="seg big">
-   <b class="${t.split!=='ratio'?'on':''}" onclick="setSplit('even')">1/N — 똑같이</b>
-   <b class="${t.split==='ratio'?'on':''}" onclick="setSplit('ratio')">예산 비율대로</b></div>
-   <div class="note2" style="margin-top:9px">공동 경비만 정산합니다. 개인 경비는 항상 제외됩니다.</div></div>
-  <div class="dbtn warn" onclick="resetTrip('${t.id}')">이 여행 내용만 비우기
-   <em>날짜·인원·예산은 두고 고정 일정·후보·지출·체크만 초기화</em></div>
-  <div class="dbtn danger" onclick="delTrip('${t.id}')">이 여행 삭제
-   <em>이 여행에 넣은 모든 내용이 사라집니다</em></div>`:'<div class="sec">여행</div><div class="card mrow"><div class="gnone" style="margin:0">선택된 여행이 없습니다</div></div>'}
- <div class="sec">동행자와 공유</div>
+ return ` <div class="sec">동행자와 공유</div>
  ${t?(t.share?`<div class="card mrow">
    <div class="srow"><span>상태</span><b style="color:var(--acc2)">공유 중 · ${esc(syncStatus())}</b></div>
    <div class="srow"><span>내 이름</span><b>${esc(myName()||'미설정')} <span class="edit" onclick="const n=prompt('내 이름',myName());if(n){setMe(n.trim());render()}">수정</span></b></div>
@@ -622,6 +604,24 @@ function vSettings(){
   <input id="joincode" placeholder="초대 코드 또는 링크 붙여넣기" autocomplete="off" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:ui-monospace,monospace;background:#FAF8F5">
   <div class="dbtn" onclick="joinByCode()" style="color:#fff;border-color:#3A6EA5;background:#3A6EA5;margin-top:8px">불러오기<em style="color:rgba(255,255,255,.75)">이 기기가 같은 계획에 연결됩니다</em></div>
  </div>
+${t?`<div class="sec">이 여행</div>
+  <div class="card mrow">
+   <div class="srow"><span>이름</span><b>${esc(t.title)}</b></div>
+   <div class="srow"><span>기간</span><b>${t.start} ~ ${t.end} (${t.days.length}일)</b></div>
+   <div class="srow"><span>지역</span><b>${esc(t.region||'미지정')}</b></div>
+   <div class="srow"><span>통화</span><b>${t.cur} · 1${CS_(t.cur).n} = ${rateOf(t.cur).toFixed(2)}원</b></div>
+   ${t.members.map(m=>`<div class="srow"><span>${esc(m.n)} 예산</span><b>${W(m.b||0)} <span class="edit" onclick="editBud('${esc(m.n)}')">수정</span></b></div>`).join('')}
+   <div class="srow"><span>공동 예산 합계</span><b>${W(t.members.reduce((a,m)=>a+(m.b||0),0))}</b></div>
+  </div>
+  <div class="sec">정산 방식</div>
+  <div class="card mrow"><div class="seg big">
+   <b class="${t.split!=='ratio'?'on':''}" onclick="setSplit('even')">1/N — 똑같이</b>
+   <b class="${t.split==='ratio'?'on':''}" onclick="setSplit('ratio')">예산 비율대로</b></div>
+   <div class="note2" style="margin-top:9px">공동 경비만 정산합니다. 개인 경비는 항상 제외됩니다.</div></div>
+  <div class="dbtn warn" onclick="resetTrip('${t.id}')">이 여행 내용만 비우기
+   <em>날짜·인원·예산은 두고 고정 일정·후보·지출·체크만 초기화</em></div>
+  <div class="dbtn danger" onclick="delTrip('${t.id}')">이 여행 삭제
+   <em>이 여행에 넣은 모든 내용이 사라집니다</em></div>`:'<div class="sec">여행</div><div class="card mrow"><div class="gnone" style="margin:0">선택된 여행이 없습니다</div></div>'}
  <div class="sec">환율</div>
  <div class="card mrow">
   <div class="srow"><span>기준</span><b>1${CS_(curOf()).n} = ${rateOf(curOf()).toFixed(2)}원</b></div>
@@ -1217,8 +1217,9 @@ function render(){
  const prevMain=document.getElementById('main');
  const sc=prevMain?prevMain.scrollTop:0;
  const sb=(t&&t.share)?`<span class="syncdot" id="syncbadge">${esc(syncStatus())}</span>`:'';
+ const showGear=['__set','__new','__arch'].indexOf(TAB)<0;
  app.innerHTML=`<header class="top"><h1>${esc(H.title)}${sb}</h1>
-   <div class="rt" onclick="${H.act}">${esc(H.rt)}</div></header>
+   <div class="hact">${showGear?'<div class="gear" onclick="A.settings()">⚙︎</div>':''}<div class="rt" onclick="${H.act}">${esc(H.rt)}</div></div></header>
   <main id="main" class="${showTabs?'':'notab'}">${(V[TAB]||vTripList)()}</main>
   ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}`;
  const m=document.getElementById('main');

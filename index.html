@@ -415,6 +415,11 @@ body.dragging{overflow:hidden;user-select:none;-webkit-user-select:none}
 .advbox{margin-bottom:10px}
 .advhd{font-size:12px;font-weight:800;color:var(--sub);margin:14px 16px 8px}
 
+
+.hact{display:flex;align-items:center;gap:7px}
+.gear{font-size:17px;color:var(--sub);background:#fff;border:1px solid var(--line);border-radius:20px;width:36px;height:36px;display:flex;align-items:center;justify-content:center}
+.gear:active{background:#F0EBE3}
+
 .loading{display:flex;align-items:center;justify-content:center;height:100dvh;font-size:14px;font-weight:700;color:var(--sub)}
 
 .hrb{background:#E6F1EA;color:#0E6B5E;border-radius:5px;padding:2px 6px;font-weight:700}
@@ -427,8 +432,8 @@ body.dragging{overflow:hidden;user-select:none;-webkit-user-select:none}
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=11"></script>
-<script type="module" src="sync.js?v=11"></script>
+<script src="app.js?v=12"></script>
+<script type="module" src="sync.js?v=12"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
