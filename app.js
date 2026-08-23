@@ -526,6 +526,8 @@ function vSettings(){
    <div class="srow"><span>상태</span><b style="color:var(--acc2)">공유 중 · ${esc(syncStatus())}</b></div>
    <div class="srow"><span>내 이름</span><b>${esc(myName()||'미설정')} <span class="edit" onclick="const n=prompt('내 이름',myName());if(n){setMe(n.trim());render()}">수정</span></b></div>
    <div class="linkbox">${esc(location.origin+location.pathname)}?t=${esc(t.share)}</div>
+  <div class="srow"><span>초대 코드</span><b style="font-family:ui-monospace,monospace;font-size:12px">${esc(t.share)}</b></div>
+  <div class="dbtn" onclick="copyCode()">초대 코드 복사<em>홈 화면 앱에서는 링크 대신 코드로 연결하세요</em></div>
   </div>
   <div class="dbtn" onclick="shareLink()" style="color:var(--acc2);border-color:#CBE0DB;background:#F2F8F6">초대 링크 다시 보내기
    <em>이 링크를 받은 사람은 같은 계획을 보고 수정할 수 있습니다</em></div>
@@ -536,6 +538,12 @@ function vSettings(){
   </div></div>
   <div class="dbtn" onclick="shareTrip()" style="color:#fff;border-color:var(--acc2);background:var(--acc2)">동행자와 공유하기
    <em style="color:rgba(255,255,255,.75)">초대 링크가 만들어집니다</em></div>`):''}
+ <div class="sec">다른 기기에서 만든 여행 불러오기</div>
+ <div class="card">
+  <div class="hint" style="margin-bottom:8px">PC나 다른 폰에서 이미 공유를 켰다면, 그 화면의 <b>초대 코드</b>를 여기에 붙여넣으세요. 링크를 통째로 붙여넣어도 됩니다.</div>
+  <input id="joincode" placeholder="초대 코드 또는 링크 붙여넣기" autocomplete="off" style="width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:ui-monospace,monospace;background:#FAF8F5">
+  <div class="dbtn" onclick="joinByCode()" style="color:#fff;border-color:#3A6EA5;background:#3A6EA5;margin-top:8px">불러오기<em style="color:rgba(255,255,255,.75)">이 기기가 같은 계획에 연결됩니다</em></div>
+ </div>
  <div class="sec">환율</div>
  <div class="card mrow">
   <div class="srow"><span>기준</span><b>1${CS_(curOf()).n} = ${rateOf(curOf()).toFixed(2)}원</b></div>
@@ -903,6 +911,26 @@ function joinShared(sid){
   startWatch();toast('공유된 여행을 불러왔습니다');render();
  }).catch(function(e){document.getElementById('app').innerHTML='<div class="loading">불러오지 못했습니다 · '+e.message+'</div>'})}
 window.joinShared=joinShared;
+
+/* ══ 초대 코드로 불러오기 (홈 화면 앱에서 링크를 못 열 때) ══ */
+function joinByCode(){
+ const el=document.getElementById('joincode');
+ var v=(el&&el.value||'').trim();
+ if(!v){toast('초대 코드를 붙여넣어 주세요');return}
+ var m=v.match(/[?&]t=([a-z0-9]+)/i); if(m)v=m[1];
+ v=v.replace(/[^a-z0-9]/gi,'');
+ if(v.length<16){toast('코드가 올바르지 않습니다');return}
+ const exist=S.trips.find(function(x){return x.share===v});
+ if(exist){S.active=exist.id;DAYI=0;TAB='plan';save();startWatch();toast('이미 연결된 여행입니다');render();return}
+ toast('불러오는 중…');
+ joinShared(v);
+}
+function copyCode(){
+ const t=T(); if(!t||!t.share)return;
+ try{navigator.clipboard.writeText(t.share).then(function(){toast('초대 코드를 복사했습니다')},function(){prompt('초대 코드',t.share)})}
+ catch(e){prompt('초대 코드',t.share)}}
+Object.assign(window,{joinByCode,copyCode});
+
 
 (function boot(){
  load(); loadFXCache();
