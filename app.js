@@ -612,7 +612,7 @@ function vSettings(){
  return ` <div class="sec">동행자와 공유</div>
  ${t?(t.share?`<div class="card mrow">
    <div class="srow"><span>상태</span><b style="color:var(--acc2)">공유 중 · ${esc(syncStatus())}</b></div>
-   <div class="srow"><span>내 이름</span><b>${esc(myName()||'미설정')} <span class="edit" onclick="const n=prompt('내 이름',myName());if(n){setMe(n.trim());render()}">수정</span></b></div>
+   <div class="srow"><span>내 이름</span><b>${myName()?esc(myName()):'<span style="color:var(--warn)">미설정</span>'} <span class="edit" onclick="askNameNow()">${myName()?'수정':'설정'}</span></b></div>
    <div class="linkbox">${esc(location.origin+location.pathname)}?t=${esc(t.share)}</div>
   <div class="srow"><span>초대 코드</span><b style="font-family:ui-monospace,monospace;font-size:12px">${esc(t.share)}</b></div>
   <div class="dbtn" onclick="copyCode()">초대 코드 복사<em>홈 화면 앱에서는 링크 대신 코드로 연결하세요</em></div>
@@ -1264,7 +1264,7 @@ function render(){
    <div class="hact">${showGear?'<div class="gear" onclick="A.settings()">⚙︎</div>':''}<div class="rt" onclick="${H.act}">${esc(H.rt)}</div></div></header>
   <main id="main" class="${showTabs?'':'notab'}">${(V[TAB]||vTripList)()}</main>
   ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}
-  ${PF?vPFForm():''}`;
+  ${PF?vPFForm():''}${NAMEASK?vNameAsk():''}`;
  const m=document.getElementById('main');
  if(['day','place'].indexOf(TAB)>=0)m.scrollTop=sc;
  if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
@@ -1273,6 +1273,22 @@ function render(){
 window.render=render;
 
 /* ══ 부팅 ══ */
+let NAMEASK=0;
+function pickName(n){setMe(n);NAMEASK=0;save();toast(n+' 님으로 설정했습니다');render()}
+function askNameNow(){NAMEASK=1;render()}
+function closeName(){NAMEASK=0;render()}
+function pickNameOther(){const n=prompt('이름을 입력해주세요');if(n&&n.trim())pickName(n.trim())}
+Object.assign(window,{pickName,askNameNow,closeName,pickNameOther});
+function vNameAsk(){
+ const t=T(); if(!t)return '';
+ return '<div class="sheetbg"></div><div class="sheet">'+
+  '<div class="shd">이 여행에서 나는 누구인가요?<span onclick="closeName()">나중에</span></div>'+
+  '<div class="sbody">'+
+   '<div class="hint" style="margin-bottom:12px">지출을 넣을 때 결제자로 쓰이고, 동행자 화면에 "누가 고쳤는지"로 표시됩니다.</div>'+
+   t.members.map(m=>'<div class="namebtn" onclick="pickName(\''+esc(m.n)+'\')">'+esc(m.n)+'</div>').join('')+
+   '<div class="fcancel" onclick="pickNameOther()">목록에 없어요 · 직접 입력</div>'+
+  '</div></div>'}
+
 function joinShared(sid){
  if(!window.FB){window.addEventListener('fb-ready',function(){joinShared(sid)},{once:true});return}
  const exist=S.trips.find(x=>x.share===sid);
@@ -1284,11 +1300,7 @@ function joinShared(sid){
   t.days=t.days||[];t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}];
   S.trips.push(t);S.active=t.id;save();
   REG=t.region||REG;DAYI=0;TAB='day';
-  if(!myName()){
-   const names=t.members.map(m=>m.n);
-   const n=prompt('내 이름을 골라주세요 ('+names.join(' / ')+')',names[names.length-1]||'');
-   if(n)setMe(n.trim());
-  }
+  if(!myName())NAMEASK=1;
   startWatch();toast('공유된 여행을 불러왔습니다');render();
  }).catch(function(e){document.getElementById('app').innerHTML='<div class="loading">불러오지 못했습니다 · '+e.message+'</div>'})}
 window.joinShared=joinShared;
