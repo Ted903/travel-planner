@@ -357,8 +357,12 @@ Object.assign(window,{addFixed,delFixed});
 
 /* ══ 지출 · 준비물 · 서류 ══ */
 let EF=null;
-function openExp(){const t=T();if(!t)return;
- EF={nm:'',amt:'',cur:t.cur||'JPY',who:t.members[0].n,cat:'음식',pay:'카드',personal:0};render();
+function openExp(id){const t=T();if(!t)return;
+ if(id){const e=t.exp.find(x=>x.id===id);
+  if(e){EF={id:id,nm:e.nm,amt:String(e.amt||e.krw||e.jpy||''),cur:e.cur||(e.krw?'KRW':'JPY'),
+   who:e.who,cat:e.cat,pay:e.pay,personal:e.personal?1:0}}}
+ else EF={id:null,nm:'',amt:'',cur:t.cur||'JPY',who:t.members[0].n,cat:'음식',pay:'카드',personal:0};
+ render();
  setTimeout(function(){const e=document.getElementById('e_nm');if(e)e.focus()},120)}
 function closeExp(){EF=null;render()}
 function efSet(k,v){if(!EF)return;EF[k]=v;render()}
@@ -369,6 +373,10 @@ function saveExp(){const t=T();if(!t||!EF)return; efSync();
  const n=parseFloat(String(EF.amt).replace(/[^0-9.]/g,''));
  if(!EF.nm.trim())return alert('항목을 입력해주세요');
  if(!n)return alert('금액을 입력해주세요');
+ if(EF.id){const e=t.exp.find(x=>x.id===EF.id);
+  if(e){e.nm=EF.nm.trim();e.amt=n;e.cur=EF.cur;e.who=EF.who;e.cat=EF.cat;e.pay=EF.pay;e.personal=EF.personal?1:0;
+   delete e.krw;delete e.jpy}
+  EF=null;save();toast('지출 수정됨');render();return}
  t.exp.push({id:uid(),nm:EF.nm.trim(),amt:n,cur:EF.cur,who:EF.who,cat:EF.cat,pay:EF.pay,personal:EF.personal?1:0});
  EF=null;save();toast('지출 추가됨');render()}
 Object.assign(window,{openExp,closeExp,efSet,efSync,saveExp});
@@ -376,7 +384,7 @@ function vExpForm(){const t=T();
  const CATS=['음식','교통','쇼핑','관광','숙박','항공','기타'];
  const C=t.cur||'JPY';
  return '<div class="sheetbg" onclick="closeExp()"></div><div class="sheet">'+
-  '<div class="shd">지출 추가<span onclick="closeExp()">닫기 ✕</span></div>'+
+  '<div class="shd">'+(EF.id?'지출 수정':'지출 추가')+'<span onclick="closeExp()">닫기 ✕</span></div>'+
   '<div class="sbody">'+
    '<div class="fld"><label>항목</label><input id="e_nm" value="'+esc(EF.nm)+'" placeholder="예: 점심 라멘" autocomplete="off" oninput="efSync()"></div>'+
    '<div class="fld"><label>금액</label><div class="amtrow">'+
@@ -396,13 +404,59 @@ function vExpForm(){const t=T();
     '<b class="'+(EF.pay==='카드'?'on':'')+'" onclick="efSync();efSet(\'pay\',\'카드\')">카드</b>'+
     '<b class="'+(EF.pay==='현금'?'on':'')+'" onclick="efSync();efSet(\'pay\',\'현금\')">현금</b></div></div>'+
    '<div class="fbtn" onclick="saveExp()">저장</div>'+
+   (EF.id?'<div class="fcancel" style="color:var(--warn)" onclick="delExpFromForm()">삭제</div>':'')+
   '</div></div>'}
+function delExpFromForm(){const t=T();if(!t||!EF||!EF.id)return;
+ if(!confirm('이 지출을 삭제할까요?'))return;
+ t.exp=t.exp.filter(e=>e.id!==EF.id);EF=null;save();toast('삭제했습니다');render()}
+window.delExpFromForm=delExpFromForm;
 function delExp(id){const t=T();if(!confirm('이 지출을 삭제할까요?'))return;
  t.exp=t.exp.filter(e=>e.id!==id);save();render()}
-function addPrep(gi){const t=T();const v=prompt('추가할 항목');if(!v)return;
- t.prep[gi].items.push({t:v,s:'',v:0});save();render()}
-function addDoc(){const t=T();const n=prompt('서류 이름 (예: 진에어 e-티켓)');if(!n)return;
- const s=prompt('메모 — 예약번호 등')||'';t.docs.push({id:uid(),i:'📄',n,s});save();render()}
+/* ── 준비물 항목 추가·수정·삭제 ── */
+let PF=null;
+function addPrep(gi){PF={mode:'prep',gi:gi,ii:-1,t:'',s:''};render();
+ setTimeout(function(){const e=document.getElementById('p_t');if(e)e.focus()},120)}
+function editPrep(gi,ii){const it=T().prep[gi].items[ii];
+ PF={mode:'prep',gi:gi,ii:ii,t:it.t||'',s:it.s||''};render();
+ setTimeout(function(){const e=document.getElementById('p_t');if(e)e.focus()},120)}
+function addDoc(){PF={mode:'doc',id:null,t:'',s:''};render();
+ setTimeout(function(){const e=document.getElementById('p_t');if(e)e.focus()},120)}
+function editDoc(id){const d=T().docs.find(x=>x.id===id);if(!d)return;
+ PF={mode:'doc',id:id,t:d.n||'',s:d.s||''};render();
+ setTimeout(function(){const e=document.getElementById('p_t');if(e)e.focus()},120)}
+function closePF(){PF=null;render()}
+function pfSync(){if(!PF)return;
+ const a=document.getElementById('p_t'),b=document.getElementById('p_s');
+ if(a)PF.t=a.value; if(b)PF.s=b.value}
+function savePF(){const t=T();if(!t||!PF)return;pfSync();
+ if(!PF.t.trim())return alert('내용을 입력해주세요');
+ if(PF.mode==='prep'){
+  if(PF.ii<0)t.prep[PF.gi].items.push({t:PF.t.trim(),s:PF.s.trim(),v:0});
+  else{const it=t.prep[PF.gi].items[PF.ii];it.t=PF.t.trim();it.s=PF.s.trim()}
+ }else{
+  if(PF.id==null)t.docs.push({id:uid(),i:'📄',n:PF.t.trim(),s:PF.s.trim()});
+  else{const d=t.docs.find(x=>x.id===PF.id);if(d){d.n=PF.t.trim();d.s=PF.s.trim()}}
+ }
+ PF=null;save();toast('저장했습니다');render()}
+function delPF(){const t=T();if(!t||!PF)return;
+ if(!confirm('삭제할까요?'))return;
+ if(PF.mode==='prep'){if(PF.ii>=0)t.prep[PF.gi].items.splice(PF.ii,1)}
+ else{if(PF.id!=null)t.docs=t.docs.filter(x=>x.id!==PF.id)}
+ PF=null;save();toast('삭제했습니다');render()}
+Object.assign(window,{editPrep,editDoc,closePF,pfSync,savePF,delPF});
+function vPFForm(){
+ const isNew=(PF.mode==='prep'?PF.ii<0:PF.id==null);
+ const title=(PF.mode==='prep'?'준비물':'서류')+(isNew?' 추가':' 수정');
+ return '<div class="sheetbg" onclick="closePF()"></div><div class="sheet">'+
+  '<div class="shd">'+title+'<span onclick="closePF()">닫기 ✕</span></div>'+
+  '<div class="sbody">'+
+   '<div class="fld"><label>'+(PF.mode==='prep'?'항목':'서류 이름')+'</label>'+
+    '<input id="p_t" value="'+esc(PF.t)+'" placeholder="'+(PF.mode==='prep'?'예: 보조 배터리':'예: 진에어 e-티켓')+'" autocomplete="off" oninput="pfSync()"></div>'+
+   '<div class="fld"><label>메모</label>'+
+    '<input id="p_s" value="'+esc(PF.s)+'" placeholder="'+(PF.mode==='prep'?'예: 절연테이프 필수':'예약번호 등')+'" autocomplete="off" oninput="pfSync()"></div>'+
+   '<div class="fbtn" onclick="savePF()">저장</div>'+
+   (isNew?'':'<div class="fcancel" style="color:var(--warn)" onclick="delPF()">삭제</div>')+
+  '</div></div>'}
 Object.assign(window,{delExp,addPrep,addDoc});
 
 /* ══ 엔진 ══ */
@@ -847,7 +901,7 @@ function vMoney(){
  <div class="sec">지출 내역<span class="secr">공동 ${shared.length} · 개인 ${mine.length}</span></div>
  <div class="card mrow" style="margin-bottom:96px">${t.exp.length?t.exp.slice().reverse().map(e=>`<div class="exp">
   <span style="flex:1">${esc(e.nm)}<span class="who">${esc(e.who)}</span>${e.personal?'<span class="pay" style="background:#F1ECF7;color:#6B4FA8">개인</span>':''}<span class="pay" style="background:${e.pay==='현금'?'#FBF4E6':'#EDF2F7'};color:${e.pay==='현금'?'#8A6A22':'#3A6EA5'}">${e.pay}</span></span>
-  <b>${e.cur&&e.cur!=='KRW'?FMT(e.amt,e.cur):W(e.amt||e.krw||0)}</b><span class="rm sm" onclick="delExp('${e.id}')">✕</span></div>`).join('')
+  <b>${e.cur&&e.cur!=='KRW'?FMT(e.amt,e.cur):W(e.amt||e.krw||0)}</b><span class="iedit sm" onclick="openExp('${e.id}')">✎</span></div>`).join('')
   :'<div class="gnone" style="margin:0">아직 없습니다. 우하단 ＋ 로 추가하세요.</div>'}</div>
  <button class="fab" onclick="openExp()">＋</button>
  ${EF?vExpForm():''}`}
@@ -873,13 +927,16 @@ function vPrep(){
   <div><div class="t">${done} / ${tot} 완료</div><div class="s">${dday(t)} · 체크하면 바로 저장됩니다</div></div></div>
  ${t.prep.map((g,gi)=>`<div class="sec">${esc(g.g)}<span class="secr" onclick="addPrep(${gi})">＋ 추가</span></div>
   <div class="card chk">${g.items.length?g.items.map((it,ii)=>`
-   <div class="ci" onclick="A.chk(${gi},${ii})"><div class="box ${it.v?'on':''}">${it.v?'✓':''}</div>
-   <div><div class="tx ${it.v?'done':''}">${esc(it.t)}</div>${it.s?`<div class="sb">${esc(it.s)}</div>`:''}</div></div>`).join('')
+   <div class="ci"><div class="box ${it.v?'on':''}" onclick="A.chk(${gi},${ii})">${it.v?'✓':''}</div>
+   <div style="flex:1" onclick="A.chk(${gi},${ii})"><div class="tx ${it.v?'done':''}">${esc(it.t)}</div>${it.s?`<div class="sb">${esc(it.s)}</div>`:''}</div>
+   <div class="iedit" onclick="editPrep(${gi},${ii})">✎</div></div>`).join('')
    :'<div class="gnone" style="margin:0">비어 있습니다. 우측 ＋ 로 추가하세요.</div>'}</div>`).join('')}
  <div class="sec">예약 · 서류 보관함<span class="secr" onclick="addDoc()">＋ 추가</span></div>
  <div class="card doc" style="margin-bottom:20px">${t.docs.length?t.docs.map(d=>`<div class="di"><div class="ic">${d.i}</div>
-  <div style="flex:1"><div class="nm">${esc(d.n)}</div><div class="sb">${esc(d.s)}</div></div><div class="of">오프라인</div></div>`).join('')
-  :'<div class="gnone" style="margin:0">예약번호·바우처를 적어두면 비행기 모드에서도 열립니다.</div>'}</div>`;
+  <div style="flex:1"><div class="nm">${esc(d.n)}</div><div class="sb">${esc(d.s)}</div></div>
+  <div class="iedit" onclick="editDoc('${d.id}')">✎</div></div>`).join('')
+  :'<div class="gnone" style="margin:0">예약번호·바우처를 적어두면 비행기 모드에서도 열립니다.</div>'}</div>
+ ${PF?vPFForm():''}`;
 }
 
 /* ══ 렌더 ══ */
