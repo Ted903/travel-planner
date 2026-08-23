@@ -432,6 +432,23 @@ function pfSync(){if(!PF)return;
  if(a)PF.t=a.value; if(b)PF.s=b.value}
 function savePF(){const t=T();if(!t||!PF)return;pfSync();
  if(!PF.t.trim())return alert('내용을 입력해주세요');
+ if(PF.mode==='mem'){
+  const nm=PF.t.trim(), bd=parseInt(String(PF.s).replace(/[^0-9]/g,''))||0;
+  if(PF.orig==null){
+   if(t.members.some(m=>m.n===nm))return alert('같은 이름이 이미 있습니다');
+   t.members.push({n:nm,b:bd});
+  }else{
+   const m=t.members.find(x=>x.n===PF.orig); if(!m)return;
+   if(nm!==PF.orig){
+    if(t.members.some(x=>x.n===nm))return alert('같은 이름이 이미 있습니다');
+    t.exp.forEach(function(e){if(e.who===PF.orig)e.who=nm});
+    if(myName()===PF.orig)setMe(nm);
+   }
+   m.n=nm; m.b=bd;
+  }
+  t.budget=t.members.reduce((a,x)=>a+(x.b||0),0);
+  PF=null;save();toast('저장했습니다');render();return;
+ }
  if(PF.mode==='prep'){
   if(PF.ii<0)t.prep[PF.gi].items.push({t:PF.t.trim(),s:PF.s.trim(),v:0});
   else{const it=t.prep[PF.gi].items[PF.ii];it.t=PF.t.trim();it.s=PF.s.trim()}
@@ -442,20 +459,31 @@ function savePF(){const t=T();if(!t||!PF)return;pfSync();
  PF=null;save();toast('저장했습니다');render()}
 function delPF(){const t=T();if(!t||!PF)return;
  if(!confirm('삭제할까요?'))return;
+ if(PF.mode==='mem'){
+  if(t.members.length<=1)return alert('마지막 한 명은 지울 수 없습니다');
+  const cnt=t.exp.filter(e=>e.who===PF.orig).length;
+  if(cnt&&!confirm(PF.orig+' 님으로 기록된 지출이 '+cnt+'건 있습니다.\n인원을 지우면 그 지출은 '+t.members.filter(m=>m.n!==PF.orig)[0].n+' 님으로 옮겨집니다. 계속할까요?'))return;
+  const to=t.members.filter(m=>m.n!==PF.orig)[0].n;
+  t.exp.forEach(function(e){if(e.who===PF.orig)e.who=to});
+  t.members=t.members.filter(m=>m.n!==PF.orig);
+  t.budget=t.members.reduce((a,x)=>a+(x.b||0),0);
+  PF=null;save();toast('삭제했습니다');render();return;
+ }
  if(PF.mode==='prep'){if(PF.ii>=0)t.prep[PF.gi].items.splice(PF.ii,1)}
  else{if(PF.id!=null)t.docs=t.docs.filter(x=>x.id!==PF.id)}
  PF=null;save();toast('삭제했습니다');render()}
 Object.assign(window,{editPrep,editDoc,closePF,pfSync,savePF,delPF});
 function vPFForm(){
- const isNew=(PF.mode==='prep'?PF.ii<0:PF.id==null);
- const title=(PF.mode==='prep'?'준비물':'서류')+(isNew?' 추가':' 수정');
+ const isNew=(PF.mode==='prep'?PF.ii<0:(PF.mode==='mem'?PF.orig==null:PF.id==null));
+ const title=(PF.mode==='prep'?'준비물':(PF.mode==='mem'?'인원':'서류'))+(isNew?' 추가':' 수정');
  return '<div class="sheetbg" onclick="closePF()"></div><div class="sheet">'+
   '<div class="shd">'+title+'<span onclick="closePF()">닫기 ✕</span></div>'+
   '<div class="sbody">'+
-   '<div class="fld"><label>'+(PF.mode==='prep'?'항목':'서류 이름')+'</label>'+
-    '<input id="p_t" value="'+esc(PF.t)+'" placeholder="'+(PF.mode==='prep'?'예: 보조 배터리':'예: 진에어 e-티켓')+'" autocomplete="off" oninput="pfSync()"></div>'+
-   '<div class="fld"><label>메모</label>'+
-    '<input id="p_s" value="'+esc(PF.s)+'" placeholder="'+(PF.mode==='prep'?'예: 절연테이프 필수':'예약번호 등')+'" autocomplete="off" oninput="pfSync()"></div>'+
+   '<div class="fld"><label>'+(PF.mode==='prep'?'항목':(PF.mode==='mem'?'이름':'서류 이름'))+'</label>'+
+    '<input id="p_t" value="'+esc(PF.t)+'" placeholder="'+(PF.mode==='prep'?'예: 보조 배터리':(PF.mode==='mem'?'예: 민희':'예: 진에어 e-티켓'))+'" autocomplete="off" oninput="pfSync()"></div>'+
+   '<div class="fld"><label>'+(PF.mode==='mem'?'공동 예산 (원)':'메모')+'</label>'+
+    '<input id="p_s" '+(PF.mode==='mem'?'type="number" inputmode="numeric" ':'')+'value="'+esc(PF.s)+'" placeholder="'+(PF.mode==='prep'?'예: 절연테이프 필수':(PF.mode==='mem'?'비우면 0':'예약번호 등'))+'" autocomplete="off" oninput="pfSync()"></div>'+
+   (PF.mode==='mem'?'<div class="hint" style="margin:-8px 0 14px">같이 쓸 돈만 넣으세요. 개인 쇼핑은 지출에서 <b>개인</b>으로 찍으면 됩니다.</div>':'')+
    '<div class="fbtn" onclick="savePF()">저장</div>'+
    (isNew?'':'<div class="fcancel" style="color:var(--warn)" onclick="delPF()">삭제</div>')+
   '</div></div>'}
@@ -610,8 +638,13 @@ ${t?`<div class="sec">이 여행</div>
    <div class="srow"><span>기간</span><b>${t.start} ~ ${t.end} (${t.days.length}일)</b></div>
    <div class="srow"><span>지역</span><b>${esc(t.region||'미지정')}</b></div>
    <div class="srow"><span>통화</span><b>${t.cur} · 1${CS_(t.cur).n} = ${rateOf(t.cur).toFixed(2)}원</b></div>
-   ${t.members.map(m=>`<div class="srow"><span>${esc(m.n)} 예산</span><b>${W(m.b||0)} <span class="edit" onclick="editBud('${esc(m.n)}')">수정</span></b></div>`).join('')}
-   <div class="srow"><span>공동 예산 합계</span><b>${W(t.members.reduce((a,m)=>a+(m.b||0),0))}</b></div>
+   <div class="srow"><span>여행 이름</span><b>${esc(t.title)} <span class="edit" onclick="editTitle()">수정</span></b></div>
+  </div>
+  <div class="sec">인원 · 공동 예산<span class="secr" onclick="addMember()">＋ 인원 추가</span></div>
+  <div class="card mrow">
+   ${t.members.map(m=>`<div class="srow"><span>${esc(m.n)}${m.n===myName()?'<em class="me">나</em>':''}</span><b>${W(m.b||0)} <span class="edit" onclick="editMember('${esc(m.n)}')">수정</span></b></div>`).join('')}
+   <div class="srow"><span>합계 (${t.members.length}명)</span><b>${W(t.members.reduce((a,m)=>a+(m.b||0),0))}</b></div>
+   ${t.members.length<2?'<div class="note2" style="margin-top:8px">인원이 1명이라 정산이 표시되지 않습니다. 함께 가는 사람을 추가하세요.</div>':''}
   </div>
   <div class="sec">정산 방식</div>
   <div class="card mrow"><div class="seg big">
@@ -642,6 +675,16 @@ ${t?`<div class="sec">이 여행</div>
  </div></div><div style="height:20px"></div>`;
 }
 
+function editTitle(){const t=T();const v=prompt('여행 이름',t.title);if(v===null)return;
+ if(!v.trim())return alert('이름을 입력해주세요');
+ t.title=v.trim();save();toast('바꿨습니다');render()}
+function addMember(){const t=T();
+ PF={mode:'mem',orig:null,t:'',s:''};render();
+ setTimeout(function(){const e=document.getElementById('p_t');if(e)e.focus()},120)}
+function editMember(name){const t=T();const m=t.members.find(x=>x.n===name);if(!m)return;
+ PF={mode:'mem',orig:name,t:m.n,s:String(m.b||'')};render();
+ setTimeout(function(){const e=document.getElementById('p_t');if(e)e.focus()},120)}
+Object.assign(window,{editTitle,addMember,editMember});
 function editBud(name){const t=T();const m=t.members.find(x=>x.n===name);if(!m)return;
  const v=prompt(name+' 님의 공동 예산 (원)', String(m.b||0)); if(v===null)return;
  m.b=parseInt(String(v).replace(/[^0-9]/g,''))||0;
@@ -987,8 +1030,7 @@ function vPrep(){
  <div class="card doc" style="margin-bottom:20px">${t.docs.length?t.docs.map(d=>`<div class="di"><div class="ic">${d.i}</div>
   <div style="flex:1"><div class="nm">${esc(d.n)}</div><div class="sb">${esc(d.s)}</div></div>
   <div class="iedit" onclick="editDoc('${d.id}')">✎</div></div>`).join('')
-  :'<div class="gnone" style="margin:0">예약번호·바우처를 적어두면 비행기 모드에서도 열립니다.</div>'}</div>
- ${PF?vPFForm():''}`;
+  :'<div class="gnone" style="margin:0">예약번호·바우처를 적어두면 비행기 모드에서도 열립니다.</div>'}</div>`;
 }
 
 /* ══ 하루 시간표 ══ */
@@ -1221,7 +1263,8 @@ function render(){
  app.innerHTML=`<header class="top"><h1>${esc(H.title)}${sb}</h1>
    <div class="hact">${showGear?'<div class="gear" onclick="A.settings()">⚙︎</div>':''}<div class="rt" onclick="${H.act}">${esc(H.rt)}</div></div></header>
   <main id="main" class="${showTabs?'':'notab'}">${(V[TAB]||vTripList)()}</main>
-  ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}`;
+  ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}
+  ${PF?vPFForm():''}`;
  const m=document.getElementById('main');
  if(['day','place'].indexOf(TAB)>=0)m.scrollTop=sc;
  if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
