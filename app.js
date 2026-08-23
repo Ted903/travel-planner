@@ -104,13 +104,34 @@ function devId(){try{let d=localStorage.getItem('travelplanner.dev');
  if(!d){d=Math.random().toString(36).slice(2,10);localStorage.setItem('travelplanner.dev',d)}
  return d}catch(e){return 'x'}}
 function signer(){return devId()+'|'+(myName()||'')}
-/* 지출은 합치기 — 양쪽이 동시에 적어도 안 사라지도록 */
+/* ── 양쪽이 동시에 넣어도 안 사라지게 합치기 ──
+   삭제는 '삭제 기록(tomb)'으로 남겨서 되살아나지 않게 한다 */
+function tombAdd(t,key){t.tomb=t.tomb||{};t.tomb[key]=Date.now()}
+function tombDel(t,key){if(t.tomb)delete t.tomb[key]}
+function unionById(a,b,tomb,pre){
+ const m={}; (a||[]).forEach(x=>m[x.id]=x); (b||[]).forEach(x=>{if(!m[x.id])m[x.id]=x});
+ return Object.keys(m).filter(id=>!tomb[pre+id]).map(id=>m[id])}
 function mergeTrip(local,remote){
  const out=JSON.parse(JSON.stringify(remote));
- const byId={}; (out.exp||[]).forEach(e=>byId[e.id]=e);
- (local.exp||[]).forEach(e=>{if(!byId[e.id]){byId[e.id]=e}});
- out.exp=Object.keys(byId).map(k=>byId[k]);
+ const tomb={};
+ [local.tomb||{},remote.tomb||{}].forEach(function(src){
+  Object.keys(src).forEach(function(k){if(!tomb[k]||src[k]>tomb[k])tomb[k]=src[k]})});
+ out.tomb=tomb;
+ out.exp=unionById(out.exp,local.exp,tomb,'e:');
+ out.docs=unionById(out.docs,local.docs,tomb,'d:');
+ (out.days||[]).forEach(function(d,i){
+  const ld=(local.days||[])[i]; if(!ld)return;
+  const set=(d.cands||[]).slice();
+  (ld.cands||[]).forEach(function(pid){if(set.indexOf(pid)<0)set.push(pid)});
+  d.cands=set.filter(function(pid){return !tomb['c'+i+':'+pid]});
+  d.tag=Object.assign({},ld.tag||{},d.tag||{});
+  d.done=Object.assign({},ld.done||{},d.done||{});
+  d.fixed=unionById(d.fixed,ld.fixed,tomb,'f:').sort(function(a,b){return t2m(a.s)-t2m(b.s)});
+ });
  return out}
+function tripSig(t){
+ return (t.exp||[]).length+'|'+(t.docs||[]).length+'|'+
+  (t.days||[]).map(d=>(d.cands||[]).length+'.'+(d.fixed||[]).length).join(',')}
 function setMe(n){try{localStorage.setItem('travelplanner.me',n)}catch(e){}}
 function startWatch(){
  const t=T(); if(!t||!t.share||!window.FB)return;
@@ -122,13 +143,12 @@ function startWatch(){
   const i=S.trips.findIndex(x=>x.id===cur.id);
   if(i<0)return;
   const keepId=cur.id;
-  const localExpCount=(cur.exp||[]).length;
   const merged=mergeTrip(cur,r.trip);
   S.trips[i]=Object.assign({},merged,{id:keepId,share:t.share});
   try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
   const who=(r.updatedBy||'').split('|')[1];
   SYNC.status=who?(who+' 수정'):'수정됨';
-  if(merged.exp.length>(r.trip.exp||[]).length){pushSoon()}
+  if(tripSig(merged)!==tripSig(r.trip)){pushSoon()}
   render();
  });
  SYNC.on=true}
@@ -285,10 +305,10 @@ const A={
  qComp:(on,v)=>{QCOMP=!!on;if(!on){if(v!=null)Q=v;clearTimeout(QT);QT=setTimeout(paintPlaces,60)}},
  clearq:()=>{Q='';LIM=20;render()},
  add:(di,pid)=>{const t=T();if(!t)return;const c=t.days[di].cands;
-  if(c.indexOf(pid)<0){c.push(pid);save();toast(P(pid).n+' → '+t.days[di].n)}
+  if(c.indexOf(pid)<0){c.push(pid);tombDel(t,'c'+di+':'+pid);save();toast(P(pid).n+' → '+t.days[di].n)}
   TAB==='place'?paintPlaces():render()},
  del:(di,pid)=>{const t=T();if(!t)return;const c=t.days[di].cands,i=c.indexOf(pid);
-  if(i>-1){c.splice(i,1);save();toast('후보에서 뺐습니다')}TAB==='place'?paintPlaces():render()},
+  if(i>-1){c.splice(i,1);tombAdd(t,'c'+di+':'+pid);save();toast('후보에서 뺐습니다')}TAB==='place'?paintPlaces():render()},
  toggle:(pid,di)=>{const t=T();if(!t){alert('먼저 여행을 만들어주세요');return}
   t.days[di].cands.indexOf(pid)>=0?A.del(di,pid):A.add(di,pid)},
  up:(di,i)=>{const c=T().days[di].cands;if(i>0){const x=c[i-1];c[i-1]=c[i];c[i]=x;save()}render()},
@@ -354,7 +374,7 @@ function addFixed(){
  save();FIXFORM=0;toast('고정 일정 추가됨');render()}
 function delFixed(fid){const d=T().days[DAYI];const f=d.fixed.find(x=>x.id===fid);if(!f)return;
  if(!confirm('"'+f.nm+'"을(를) 삭제할까요?'))return;
- d.fixed=d.fixed.filter(x=>x.id!==fid);save();render()}
+ tombAdd(T(),'f:'+fid);d.fixed=d.fixed.filter(x=>x.id!==fid);save();render()}
 Object.assign(window,{addFixed,delFixed});
 
 /* ══ 지출 · 준비물 · 서류 ══ */
@@ -410,10 +430,10 @@ function vExpForm(){const t=T();
   '</div></div>'}
 function delExpFromForm(){const t=T();if(!t||!EF||!EF.id)return;
  if(!confirm('이 지출을 삭제할까요?'))return;
- t.exp=t.exp.filter(e=>e.id!==EF.id);EF=null;save();toast('삭제했습니다');render()}
+ tombAdd(t,'e:'+EF.id);t.exp=t.exp.filter(e=>e.id!==EF.id);EF=null;save();toast('삭제했습니다');render()}
 window.delExpFromForm=delExpFromForm;
 function delExp(id){const t=T();if(!confirm('이 지출을 삭제할까요?'))return;
- t.exp=t.exp.filter(e=>e.id!==id);save();render()}
+ tombAdd(t,'e:'+id);t.exp=t.exp.filter(e=>e.id!==id);save();render()}
 /* ── 준비물 항목 추가·수정·삭제 ── */
 let PF=null;
 function addPrep(gi){PF={mode:'prep',gi:gi,ii:-1,t:'',s:''};render();
@@ -470,7 +490,7 @@ function delPF(){const t=T();if(!t||!PF)return;
   PF=null;save();toast('삭제했습니다');render();return;
  }
  if(PF.mode==='prep'){if(PF.ii>=0)t.prep[PF.gi].items.splice(PF.ii,1)}
- else{if(PF.id!=null)t.docs=t.docs.filter(x=>x.id!==PF.id)}
+ else{if(PF.id!=null){tombAdd(t,'d:'+PF.id);t.docs=t.docs.filter(x=>x.id!==PF.id)}}
  PF=null;save();toast('삭제했습니다');render()}
 Object.assign(window,{editPrep,editDoc,closePF,pfSync,savePF,delPF});
 function vPFForm(){
