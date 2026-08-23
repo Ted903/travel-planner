@@ -1,4 +1,4 @@
-const C='travel-v6';
+const C='travel-v7';
 const CORE=['./','./index.html','./app.js?v=5','./sync.js?v=5','./places.json','./manifest.json',
  './icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png',
  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
