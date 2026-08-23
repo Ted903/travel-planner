@@ -237,7 +237,7 @@ function load(){
  try{const r=localStorage.getItem(KEY);S=r?JSON.parse(r):blank()}catch(e){S=blank()}
  if(!S||S.v!==2)S=blank();
  S.trips=S.trips||[];
- S.trips.forEach(t=>{t.days=t.days||[];t.days.forEach(d=>{d.fixed=d.fixed||[];d.cands=d.cands||[];d.done=d.done||{}});
+ S.trips.forEach(t=>{t.days=t.days||[];t.days.forEach(d=>{d.fixed=d.fixed||[];d.cands=d.cands||[];d.done=d.done||{};d.tag=d.tag||{}});
   t.exp=t.exp||[];t.prep=t.prep||[];t.docs=t.docs||[];t.members=t.members||[{n:'나'}];t.cur=t.cur||'JPY'});
  try{localStorage.removeItem('travelplanner.v1')}catch(e){}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){alert('저장 공간이 부족합니다')}
@@ -256,7 +256,7 @@ const todayIso=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezone
 
 /* ══ 화면 상태 ══ */
 let WD='auto';
-let QT=null, QCOMP=false;
+let QT=null, QCOMP=false, TAGOPEN=null;
 let TAB='__trips', DAYI=0, TDI=0, FILT='all', AREA='all', REG='', Q='', LIM=20, PICK=0, FIXFORM=0, mapObj=null, TOAST=null, TT=null;
 const TABS=[['today','🧭','오늘'],['plan','📅','일정'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방']];
 const NOWM=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
@@ -458,6 +458,25 @@ function vPFForm(){
    (isNew?'':'<div class="fcancel" style="color:var(--warn)" onclick="delPF()">삭제</div>')+
   '</div></div>'}
 Object.assign(window,{delExp,addPrep,addDoc});
+
+/* ══ 시간 구획 (2축) ══ */
+const SLOTS=[['am','오전','08:00','12:00'],['pm','오후','12:00','18:00'],['nt','밤','18:00','22:00']];
+const MEALS=[['bf','아침'],['ln','점심'],['dn','저녁'],['sn','간식']];
+const SLOTNM=k=>{const s=SLOTS.find(x=>x[0]===k);return s?s[1]:''};
+const MEALNM=k=>{const m=MEALS.find(x=>x[0]===k);return m?m[1]:''};
+function tagOf(D,pid){return (D.tag&&D.tag[pid])||{}}
+function slotOfGap(g){
+ const hit=SLOTS.filter(s=>Math.min(g.t,t2m(s[3]))-Math.max(g.f,t2m(s[2]))>=40);
+ return hit.length?hit.map(s=>s[1]).join('·'):''}
+function setSlot(di,pid,k){const D=T().days[di];D.tag=D.tag||{};
+ const cur=D.tag[pid]||{}; cur.s=(cur.s===k?'':k); D.tag[pid]=cur; save();render()}
+function setMeal(di,pid,k){const D=T().days[di];D.tag=D.tag||{};
+ const cur=D.tag[pid]||{}; cur.m=(cur.m===k?'':k); D.tag[pid]=cur; save();render()}
+function togTag(pid){TAGOPEN=(TAGOPEN===pid?null:pid);render()}
+function swapCand(di,a,b){const c=T().days[di].cands;
+ if(a<0||b<0||a>=c.length||b>=c.length)return;
+ const x=c[a];c[a]=c[b];c[b]=x;save();render()}
+Object.assign(window,{setSlot,setMeal,togTag,swapCand});
 
 /* ══ 엔진 ══ */
 const DAY_START='08:00', DAY_END='22:00';
@@ -667,10 +686,13 @@ function vPlan(){
  }else{
   G.forEach((g,gi)=>{
    const ok=rest.filter(p=>fitsIn(p,g)), no=rest.filter(p=>!fitsIn(p,g));
-   body+=`<div class="gap"><div class="t"><b>빈 시간 ${m2t(g.f)} ~ ${m2t(g.t)}</b><span>${D2(g.t-g.f)}</span></div>
-    ${rest.length?`<div class="fit">${ok.slice(0,3).map(p=>`<span>${CAT[p.c].i} ${esc(cut(p.n,11))}</span>`).join('')}
+   const _sl=slotOfGap(g);
+   const _same=ok.filter(p=>{const tg=tagOf(D,p.i);return tg.s&&_sl.indexOf(SLOTNM(tg.s))>=0});
+   const _show=(_same.length?_same:ok);
+   body+=`<div class="gap"><div class="t"><b>빈 시간 ${m2t(g.f)} ~ ${m2t(g.t)}</b><span>${_sl?_sl+' · ':''}${D2(g.t-g.f)}</span></div>
+    ${rest.length?`<div class="fit">${_show.slice(0,3).map(p=>`<span>${CAT[p.c].i} ${esc(cut(p.n,11))}</span>`).join('')}
      ${no.slice(0,1).map(p=>`<span class="no">${esc(cut(p.n,11))}</span>`).join('')}</div>
-    <div class="okline">담아둔 후보 ${ok.length}곳이 이 시간에 들어갑니다</div>`
+    <div class="okline">${_same.length?_sl+' 후보 '+_same.length+'곳':'담아둔 후보 '+ok.length+'곳'}이 이 시간에 들어갑니다</div>`
     :'<div class="gnone">담아둔 후보가 없습니다</div>'}</div>`;
    const a=FX2[gi];
    if(a){const c=CAT[a.cat]||CAT.see;
@@ -713,15 +735,43 @@ function vPlan(){
   ${body}
   <div class="addbtn dark" onclick="A.fixform()">${FIXFORM?'✕ 닫기':'＋ 고정 일정 추가'}</div>${fixform}
   <div class="grouphd"><span class="l">${D.n} 후보</span><span class="r">${rest.length?'소요 '+D2(NEED)+' / 빈 '+D2(FREE):'비어 있음'}</span></div>
-  ${cands.length?chain.map((x,i)=>{const p=x.p,c=CAT[p.c],dn=done[p.i];
-   return `${i>0?`<div class="mvline"><span>${x.mv.mode==='도보'?'🚶':'🚃'} ${x.mv.mode} 약 ${x.mv.min}분${x.mv.km!=null?' · '+x.mv.km.toFixed(1)+'km':''} <em>추정</em></span></div>`:''}
-   <div class="cand ${dn?'dn':''}">
-    <div class="ord"><span onclick="A.up(${DAYI},${i})">▲</span><b>${i+1}</b><span onclick="A.dn(${DAYI},${i})">▼</span></div>
-    <div style="flex:1" onclick="A.visit(${DAYI},'${p.i}')"><div class="nm">${c.i} ${esc(p.n)}</div>
-     <div class="meta"><span>약 ${D2(p.du)}</span>${p.rt?`<span>★ ${p.rt}</span>`:''}${p.g?`<span>${esc(p.g)}</span>`:''}${dn?`<span style="color:var(--acc2);font-weight:800">✓ ${dn} 방문</span>`:''}</div>
-     ${p.m?`<div class="memo mine">📝 ${esc(p.m)}</div>`:(p.d?`<div class="memo">${esc(cut(p.d,64))}</div>`:'')}</div>
-    <div class="rm" onclick="A.del(${DAYI},'${p.i}')">✕</div></div>`}).join('')
-   :'<div class="empty">아직 담은 후보가 없습니다<br><span class="es">아래 버튼이나 <b>장소</b> 탭에서 담아보세요</span></div>'}
+  ${(function(){
+    if(!cands.length)return '';
+    const groups=[['am','오전'],['pm','오후'],['nt','밤'],['','구획 미지정']];
+    const idxOf={}; D.cands.forEach((id,k)=>idxOf[id]=k);
+    let out='', prevP=null, seq=0;
+    groups.forEach(function(gr){
+      const items=cands.filter(p=>((D.tag&&D.tag[p.i]&&D.tag[p.i].s)||'')===gr[0]);
+      if(!items.length)return;
+      const need=items.filter(p=>!done[p.i]).reduce((a,p)=>a+p.du,0);
+      out+='<div class="slothd"><span class="sl">'+gr[1]+'</span><span class="sr">'+items.length+'곳 · 소요 '+D2(need)+'</span></div>';
+      items.forEach(function(p,gi){
+        const mv=moveEst(prevP,p); prevP=p; seq++;
+        const dn=done[p.i], c=CAT[p.c], tg=tagOf(D,p.i);
+        const myIdx=idxOf[p.i];
+        const upIdx=gi>0?idxOf[items[gi-1].i]:-1;
+        const dnIdx=gi<items.length-1?idxOf[items[gi+1].i]:-1;
+        if(seq>1)out+='<div class="mvline"><span>'+(mv.mode==='도보'?'🚶':'🚃')+' '+mv.mode+' 약 '+mv.min+'분'+(mv.km!=null?' · '+mv.km.toFixed(1)+'km':'')+' <em>추정</em></span></div>';
+        out+='<div class="cand '+(dn?'dn':'')+'">'+
+         '<div class="ord">'+(upIdx>=0?'<span onclick="swapCand('+DAYI+','+myIdx+','+upIdx+')">▲</span>':'<span class="off">▲</span>')+
+          '<b>'+(gi+1)+'</b>'+(dnIdx>=0?'<span onclick="swapCand('+DAYI+','+myIdx+','+dnIdx+')">▼</span>':'<span class="off">▼</span>')+'</div>'+
+         '<div style="flex:1">'+
+          '<div class="nm" onclick="A.visit('+DAYI+',\''+p.i+'\')">'+c.i+' '+esc(p.n)+
+            (tg.m?'<span class="mealb">'+MEALNM(tg.m)+'</span>':'')+'</div>'+
+          '<div class="meta"><span>약 '+D2(p.du)+'</span>'+(p.rt?'<span>★ '+p.rt+'</span>':'')+(p.g?'<span>'+esc(p.g)+'</span>':'')+
+            (dn?'<span style="color:var(--acc2);font-weight:800">✓ '+dn+' 방문</span>':'')+'</div>'+
+          (p.m?'<div class="memo mine">📝 '+esc(p.m)+'</div>':(p.d?'<div class="memo">'+esc(cut(p.d,64))+'</div>':''))+
+          '<div class="tagbtn" onclick="togTag(\''+p.i+'\')">'+(TAGOPEN===p.i?'✕ 닫기':'🕘 구획 '+(tg.s?SLOTNM(tg.s):'미지정')+(tg.m?' · '+MEALNM(tg.m):''))+'</div>'+
+          (TAGOPEN===p.i?('<div class="tagpick">'+
+            '<div class="tl">시간대</div><div class="tr">'+SLOTS.map(s=>'<span class="tc '+(tg.s===s[0]?'on':'')+'" onclick="setSlot('+DAYI+',\''+p.i+'\',\''+s[0]+'\')">'+s[1]+'</span>').join('')+'</div>'+
+            '<div class="tl">식사</div><div class="tr">'+MEALS.map(m=>'<span class="tc m '+(tg.m===m[0]?'on':'')+'" onclick="setMeal('+DAYI+',\''+p.i+'\',\''+m[0]+'\')">'+m[1]+'</span>').join('')+'</div>'+
+            '<div class="th">한 번 더 누르면 해제됩니다</div></div>'):'')+
+         '</div>'+
+         '<div class="rm" onclick="A.del('+DAYI+',\''+p.i+'\')">✕</div></div>';
+      });
+    });
+    return out;
+  })()||'<div class="empty">아직 담은 후보가 없습니다<br><span class="es">아래 버튼이나 <b>장소</b> 탭에서 담아보세요</span></div>'}
   <div class="addbtn" onclick="A.pick()">${PICK?'✕ 닫기':'＋ 장소에서 후보 담기'}</div>${picker}<div style="height:16px"></div>`;
 }
 function drawMap(){const el=document.getElementById('map');if(!el)return;

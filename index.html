@@ -351,6 +351,21 @@ main.notab{padding-bottom:24px}
 .iedit.sm{flex:0 0 28px;height:28px;font-size:12px;border-radius:8px}
 .di{align-items:center}
 
+
+.slothd{display:flex;align-items:baseline;justify-content:space-between;margin:16px 16px 8px;padding-bottom:7px;border-bottom:2px solid var(--line)}
+.slothd .sl{font-size:14px;font-weight:800;letter-spacing:-.02em}
+.slothd .sr{font-size:11.5px;font-weight:700;color:var(--sub)}
+.cand .ord span.off{color:#EAE4DA}
+.mealb{display:inline-block;font-size:10.5px;font-weight:800;color:#8A6A22;background:#FBF4E6;border-radius:6px;padding:2px 7px;margin-left:7px;vertical-align:middle}
+.tagbtn{display:inline-flex;align-items:center;margin-top:9px;font-size:11.5px;font-weight:700;color:var(--sub);background:#F4F1EB;border:1px solid var(--line);border-radius:9px;padding:7px 11px;min-height:34px}
+.tagpick{margin-top:9px;background:#FAF8F5;border:1px solid var(--line);border-radius:12px;padding:11px 12px}
+.tagpick .tl{font-size:11px;font-weight:800;color:var(--sub);margin-bottom:6px}
+.tagpick .tr{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tagpick .tc{font-size:12.5px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--sub);border-radius:9px;padding:8px 13px;min-height:38px;display:flex;align-items:center}
+.tagpick .tc.on{background:var(--ink);border-color:var(--ink);color:#fff}
+.tagpick .tc.m.on{background:var(--gold);border-color:var(--gold);color:#fff}
+.tagpick .th{font-size:10.5px;color:var(--dim);font-weight:600}
+
 .loading{display:flex;align-items:center;justify-content:center;height:100dvh;font-size:14px;font-weight:700;color:var(--sub)}
 
 .hrb{background:#E6F1EA;color:#0E6B5E;border-radius:5px;padding:2px 6px;font-weight:700}
@@ -363,8 +378,8 @@ main.notab{padding-bottom:24px}
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=9"></script>
-<script type="module" src="sync.js?v=9"></script>
+<script src="app.js?v=10"></script>
+<script type="module" src="sync.js?v=10"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
