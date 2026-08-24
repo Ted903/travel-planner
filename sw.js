@@ -1,5 +1,5 @@
-const C='travel-v16';
-const CORE=['./','./index.html','./app.js?v=16','./sync.js?v=16','./places.json?v=3','./manifest.json',
+const C='travel-v17';
+const CORE=['./','./index.html','./app.js?v=17','./sync.js?v=17','./places.json?v=4','./manifest.json',
  './icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png',
  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
  'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css'];
