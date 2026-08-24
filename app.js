@@ -1183,6 +1183,9 @@ function dayDragBind(){
 function pressStart(e,el){
  if(!EDIT)return;
  if(e.pointerType==='mouse'&&e.button!==0)return;
+ try{const _s=window.getSelection(); _s&&_s.removeAllRanges()}catch(_){}
+ function noSel(ev){ev.preventDefault()}
+ document.addEventListener('selectstart',noSel);
  const pid=el.getAttribute('data-pid');
  const sx=e.clientX, sy=e.clientY;
  let dragging=false, ghost=null, gx=0, gy=0, timer=null;
@@ -1221,6 +1224,7 @@ function pressStart(e,el){
  }
  function done(re){
   clearTimeout(timer);
+  document.removeEventListener('selectstart',noSel);
   document.removeEventListener('pointermove',onMove);
   document.removeEventListener('pointerup',onUp);
   document.removeEventListener('pointercancel',onUp);
@@ -1287,6 +1291,7 @@ function render(){
   ${PF?vPFForm():''}${NAMEASK?vNameAsk():''}`;
  const m=document.getElementById('main');
  if(['day','place'].indexOf(TAB)>=0)m.scrollTop=sc;
+ document.body.classList.toggle('editing',TAB==='day'&&!!EDIT);
  if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
  if(TAB==='money')calc();
 }
