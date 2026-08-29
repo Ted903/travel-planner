@@ -5,7 +5,8 @@ const CURS={JPY:{s:'¥',n:'엔'},USD:{s:'US$',n:'달러'},EUR:{s:'€',n:'유로
  SGD:{s:'S$',n:'싱가포르달러'},PHP:{s:'₱',n:'페소'},KRW:{s:'₩',n:'원'}};
 const FALLBACK={JPY:8.72,USD:1390,EUR:1510,TWD:43,THB:39,VND:0.053,HKD:178,CNY:192,SGD:1030,PHP:24,KRW:1};
 const CAT={eat:{n:'식사',c:'var(--eat)',i:'🍜'},cafe:{n:'카페',c:'var(--cafe)',i:'☕'},see:{n:'관광',c:'var(--see)',i:'🏯'},
- shop:{n:'쇼핑',c:'var(--shop)',i:'🛍'},stay:{n:'숙소',c:'var(--stay)',i:'🏨'},move:{n:'이동',c:'var(--move)',i:'✈️'}};
+ shop:{n:'쇼핑',c:'var(--shop)',i:'🛍'},stay:{n:'숙소',c:'var(--stay)',i:'🏨'},
+ card:{n:'카드 쇼핑',c:'var(--cardshop)',i:'🎴'},move:{n:'이동',c:'var(--move)',i:'✈️'}};
 const t2m=s=>{const p=String(s).split(':').map(Number);return p[0]*60+(p[1]||0)};
 const m2t=m=>String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(Math.round(m)%60).padStart(2,'0');
 const D2=m=>m>=60?(Math.floor(m/60)+'시간'+(m%60?' '+(m%60)+'분':'')):(m+'분');
@@ -872,7 +873,8 @@ function placeChips(){
  const F=[['all','전체',R.length],['un','미배정',R.filter(p=>!q.inTrip(p)).length],
   ['eat','🍜 식사',R.filter(p=>p.c==='eat').length],['cafe','☕ 카페',R.filter(p=>p.c==='cafe').length],
   ['see','🏯 관광',R.filter(p=>p.c==='see').length],['shop','🛍 쇼핑',R.filter(p=>p.c==='shop').length],
-  ['stay','🏨 숙소',R.filter(p=>p.c==='stay').length]].filter(x=>x[2]>0);
+  ['stay','🏨 숙소',R.filter(p=>p.c==='stay').length],
+  ['card','🎴 카드 쇼핑',R.filter(p=>p.c==='card').length]].filter(x=>x[2]>0);
  return F.map(f=>`<span class="f ${FILT===f[0]?'on':''}" onclick="A.filt('${f[0]}')">${f[1]} ${f[2]}</span>`).join('')}
 
 function placeBody(){
