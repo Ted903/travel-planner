@@ -756,7 +756,7 @@ function vPlan(){
    const _same=ok.filter(p=>{const tg=tagOf(D,p.i);return tg.s&&_sl.indexOf(SLOTNM(tg.s))>=0});
    const _show=(_same.length?_same:ok);
    body+=`<div class="gap"><div class="t"><b>빈 시간 ${m2t(g.f)} ~ ${m2t(g.t)}</b><span>${_sl?_sl+' · ':''}${D2(g.t-g.f)}</span></div>
-    ${rest.length?`<div class="fit">${_show.slice(0,3).map(p=>`<span>${CAT[p.c].i} ${esc(cut(p.n,11))}</span>`).join('')}
+    ${rest.length?`<div class="fit">${_show.slice(0,3).map(p=>`<span>${(CAT[p.c]||CAT.see).i} ${esc(cut(p.n,11))}</span>`).join('')}
      ${no.slice(0,1).map(p=>`<span class="no">${esc(cut(p.n,11))}</span>`).join('')}</div>
     <div class="okline">${_same.length?_sl+' 후보 '+_same.length+'곳':'담아둔 후보 '+ok.length+'곳'}이 이 시간에 들어갑니다</div>`
     :'<div class="gnone">담아둔 후보가 없습니다</div>'}</div>`;
@@ -774,7 +774,7 @@ function vPlan(){
  const pool=DB.filter(p=>p.r===t.region&&D.cands.indexOf(p.i)<0)
   .sort((a,b)=>(b.rt||0)-(a.rt||0)||(b.rv||0)-(a.rv||0)).slice(0,12);
  const picker=PICK?`<div class="picker"><div class="ph">${D.n} 후보로 담기 · 평점순<span onclick="A.pick()">닫기 ✕</span></div>
-  ${pool.length?pool.map(p=>{const c=CAT[p.c];const other=t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0);
+  ${pool.length?pool.map(p=>{const c=CAT[p.c]||CAT.see;const other=t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0);
    return `<div class="pk" onclick="A.add(${DAYI},'${p.i}')"><div style="flex:1">
     <div class="nm">${c.i} ${esc(p.n)}</div><div class="meta"><span>약 ${D2(p.du)}</span>${p.rt?`<span>★ ${p.rt}</span>`:''}${p.g?`<span>${esc(p.g)}</span>`:''}
     ${other.length?`<span style="color:var(--acc2);font-weight:800">${other.map(i=>t.days[i].n).join('·')}에 있음</span>`:''}</div></div>
@@ -813,7 +813,7 @@ function vPlan(){
       out+='<div class="slothd"><span class="sl">'+gr[1]+'</span><span class="sr">'+items.length+'곳 · 소요 '+D2(need)+'</span></div>';
       items.forEach(function(p,gi){
         const mv=moveEst(prevP,p); prevP=p; seq++;
-        const dn=done[p.i], c=CAT[p.c], tg=tagOf(D,p.i);
+        const dn=done[p.i], c=CAT[p.c]||CAT.see, tg=tagOf(D,p.i);
         const myIdx=idxOf[p.i];
         const upIdx=gi>0?idxOf[items[gi-1].i]:-1;
         const dnIdx=gi<items.length-1?idxOf[items[gi+1].i]:-1;
@@ -880,7 +880,7 @@ function placeChips(){
 function placeBody(){
  const q=placeFilter(), t=q.t, L2=q.list;
  return `<div class="cnt">${L2.length}곳${Q?' · "'+esc(Q)+'"':''}${!t?' · 담으려면 여행을 먼저 만드세요':''}</div>
- ${L2.slice(0,LIM).map(p=>{const c=CAT[p.c];const ds=t?t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0):[];
+ ${L2.slice(0,LIM).map(p=>{const c=CAT[p.c]||CAT.see;const ds=t?t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0):[];
   return `<div class="pl">
    <div class="r1">${p.ph?`<img class="th" src="${esc(p.ph)}=w96-h96-k-no" alt="" loading="lazy" decoding="async" onerror="this.remove()">`:''}<span class="chip" style="background:${c.c}18;color:${c.c}">${c.i}</span><span class="nm">${esc(p.n)}</span></div>
    <div class="info">${p.rt?`<span>★ ${p.rt} (${(p.rv||0).toLocaleString()})</span>`:'<span class="d">평점 없음</span>'}
@@ -951,7 +951,7 @@ function vToday(){
   :`<div class="anchornext"><div class="k">남은 고정 일정</div><div class="v">없음</div>
   <div class="s">${D2(win)} 전부 자유 시간입니다</div></div>`}
  <div class="nowhd"><span>${live?'지금 갈 수 있는 곳':'이 시간에 갈 수 있는 곳'}</span><em>${opts.length}곳${tooBig>0?' · '+tooBig+'곳은 시간 부족':''}</em></div>
- ${opts.length?opts.slice(0,4).map((o,i)=>{const c=CAT[o.c];return `<div class="opt ${i===0?'best':''}">
+ ${opts.length?opts.slice(0,4).map((o,i)=>{const c=CAT[o.c]||CAT.see;return `<div class="opt ${i===0?'best':''}">
    ${i===0?'<div class="tag">시간 딱 맞음</div>':''}
    <div class="nm">${c.i} ${esc(o.n)}</div>
    <div class="meta">${o.rt?`<span>★ ${o.rt}</span>`:''}${o.mv.km!=null?`<span>${o.mv.mode} ${o.mv.min}분</span>`:''}<span>약 ${D2(o.du)}</span>${o.g?`<span>${esc(o.g)}</span>`:''}</div>
@@ -1067,7 +1067,7 @@ function tagS(D,pid){return ((D.tag&&D.tag[pid])||{}).s||''}
 function tagM(D,pid){return ((D.tag&&D.tag[pid])||{}).m||''}
 
 function dayCard(D,p,edit){
- const dn=D.done[p.i], c=CAT[p.c];
+ const dn=D.done[p.i], c=CAT[p.c]||CAT.see;
  return '<div class="dcard'+(dn?' dn':'')+'" data-pid="'+p.i+'">'+
   (edit?'<span class="dh">⠿</span>':'')+
   '<div class="dbody" onclick="A.visit('+DAYI+',\''+p.i+'\')">'+
@@ -1141,7 +1141,7 @@ function vDay(){
  const pool=DB.filter(p=>p.r===t.region&&D.cands.indexOf(p.i)<0)
   .sort((a,b)=>(b.rt||0)-(a.rt||0)||(b.rv||0)-(a.rv||0)).slice(0,12);
  const picker=PICK?'<div class="picker"><div class="ph">'+D.n+'에 담기 · 평점순<span onclick="A.pick()">닫기 ✕</span></div>'+
-  (pool.length?pool.map(function(p){const c=CAT[p.c];
+  (pool.length?pool.map(function(p){const c=CAT[p.c]||CAT.see;
    const other=t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0);
    return '<div class="pk" onclick="A.add('+DAYI+',\''+p.i+'\')"><div style="flex:1">'+
     '<div class="nm">'+c.i+' '+esc(p.n)+'</div><div class="meta"><span>약 '+D2(p.du)+'</span>'+(p.rt?'<span>★ '+p.rt+'</span>':'')+(p.g?'<span>'+esc(p.g)+'</span>':'')+
