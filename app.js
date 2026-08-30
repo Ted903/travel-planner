@@ -882,7 +882,7 @@ function placeBody(){
  return `<div class="cnt">${L2.length}곳${Q?' · "'+esc(Q)+'"':''}${!t?' · 담으려면 여행을 먼저 만드세요':''}</div>
  ${L2.slice(0,LIM).map(p=>{const c=CAT[p.c];const ds=t?t.days.map((d,i)=>d.cands.indexOf(p.i)>=0?i:-1).filter(i=>i>=0):[];
   return `<div class="pl">
-   <div class="r1"><span class="chip" style="background:${c.c}18;color:${c.c}">${c.i}</span><span class="nm">${esc(p.n)}</span></div>
+   <div class="r1">${p.ph?`<img class="th" src="${esc(p.ph)}=w96-h96-k-no" alt="" loading="lazy" decoding="async" onerror="this.remove()">`:''}<span class="chip" style="background:${c.c}18;color:${c.c}">${c.i}</span><span class="nm">${esc(p.n)}</span></div>
    <div class="info">${p.rt?`<span>★ ${p.rt} (${(p.rv||0).toLocaleString()})</span>`:'<span class="d">평점 없음</span>'}
     ${p.g?`<span>${esc(p.g)}</span>`:''}${p.pr?`<span>${esc(p.pr)}</span>`:''}<span>약 ${D2(p.du)}</span>${p.ll?'':'<span class="d">좌표 없음</span>'}${(function(){var w=curWd(t);if(!w||!p.hr||!p.hr[w])return '';return '<span class="hrb">'+DNM[DKEY.indexOf(w)]+' '+esc(p.hr[w])+'</span>'})()}</div>
    ${p.m?`<div class="memo mine">📝 ${esc(p.m)}</div>`:''}

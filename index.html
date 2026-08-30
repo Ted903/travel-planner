@@ -179,6 +179,8 @@ nav.tabs button.on{color:var(--acc)}
 .cnt{padding:0 16px 8px;font-size:12px;font-weight:700;color:var(--sub)}
 .pl{margin:0 16px 9px;background:#fff;border:1px solid var(--line);border-radius:15px;padding:13px 13px}
 .pl .r1{display:flex;align-items:flex-start;gap:7px}
+.pl .th{flex:0 0 48px;width:48px;height:48px;border-radius:8px;object-fit:cover;display:block;background:var(--line)}
+.pl .th+.chip{display:none}
 .pl .nm{font-size:15.5px;font-weight:800;flex:1;letter-spacing:-.02em;line-height:1.35}
 .pl .info{font-size:11.5px;color:var(--sub);margin-top:7px;display:flex;gap:9px;flex-wrap:wrap}
 .pl .info .d{color:#C4BCB2}
@@ -441,8 +443,8 @@ body.dragging{overflow:hidden;user-select:none;-webkit-user-select:none}
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=19"></script>
-<script type="module" src="sync.js?v=19"></script>
+<script src="app.js?v=20"></script>
+<script type="module" src="sync.js?v=20"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
