@@ -438,13 +438,55 @@ body.dragging{overflow:hidden;user-select:none;-webkit-user-select:none}
 .warnbox .ws{font-weight:600;color:#8E5049;font-size:11.5px;margin-top:4px}
 .optbar{background:#EAF3F0;color:#0E6B5E;border-radius:11px;padding:10px 13px;font-size:12.5px;font-weight:800;margin-bottom:10px;text-align:center}
 .optbar:active{opacity:.6}
+
+
+/* 동선 */
+.rtop{display:flex;align-items:center;gap:8px;margin:0 16px 10px}
+.rtop .bs{flex:1;display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:11px 13px;min-height:46px;font-size:13px;font-weight:700}
+.rtop .bs .sq{flex:0 0 14px;height:14px;background:#17130F;border-radius:3px}
+.rtop .bs .tx{flex:1;letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rtop .bs .tx em{font-style:normal;color:var(--sub);font-weight:700}
+.rtop .bs .ed{flex:0 0 auto;font-size:11px;font-weight:800;color:var(--acc2)}
+.rtop .rx{flex:0 0 auto;font-size:12.5px;font-weight:800;color:var(--sub);border:1px solid var(--line);background:#fff;border-radius:12px;padding:11px 12px;min-height:46px;display:flex;align-items:center}
+.shot{margin:0 16px 10px;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.shot .sh{padding:13px 15px 12px;border-bottom:1px solid var(--line)}
+.shot .sh b{display:block;font-size:16.5px;font-weight:800;letter-spacing:-.025em}
+.shot .sh em{display:block;font-style:normal;font-size:11.5px;font-weight:700;color:var(--sub);margin-top:4px}
+#rmap{height:60vh;min-height:380px;max-height:640px;width:100%;background:#E6E1D8}
+.rpin{width:26px;height:26px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.32)}
+.rbase{width:20px;height:20px;border-radius:4px;background:#17130F;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.32)}
+.leaflet-tooltip.rtip{background:rgba(255,255,255,.95);border:1px solid rgba(23,19,15,.14);border-radius:6px;
+  padding:1px 4px;font-size:9.5px;font-weight:800;line-height:1.35;color:#17130F;
+  box-shadow:0 1px 3px rgba(0,0,0,.16);white-space:nowrap;margin:0}
+.leaflet-tooltip.rtip:before{display:none}
+/* 라벨을 번호 핀보다 아래로 (marker-pane 600 · tooltip-pane 기본 650) */
+.leaflet-pane.leaflet-tooltip-pane{z-index:580}
+.leaflet-container .leaflet-control-attribution{font-size:9.5px;background:rgba(255,255,255,.72)}
+.savebtn{margin:0 16px 6px;border:1px solid var(--acc2);background:#F2F8F6;color:var(--acc2);border-radius:14px;
+  padding:14px;text-align:center;font-size:14.5px;font-weight:800;min-height:50px;display:flex;align-items:center;justify-content:center}
+.savehint{margin:0 16px 4px;font-size:11.5px;color:var(--dim);font-weight:600;text-align:center;line-height:1.6}
+.rgrp{margin:16px 16px 8px;display:flex;align-items:center;gap:7px;font-size:13px;font-weight:800}
+.rgrp i{flex:0 0 10px;height:10px;border-radius:50%;display:block}
+.rgrp em{font-style:normal;font-size:11.5px;font-weight:700;color:var(--sub);margin-left:auto}
+.rchips{display:flex;flex-wrap:wrap;gap:6px;margin:0 16px 4px}
+.rchip{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);border-radius:11px;
+  padding:8px 11px;font-size:12.5px;font-weight:700;letter-spacing:-.02em;max-width:100%;min-height:38px}
+.rchip b{flex:0 0 19px;height:19px;border-radius:50%;color:#fff;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.rchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bsk{display:flex;align-items:center;gap:11px;padding:12px 2px;min-height:56px}
+.bsk+.bsk{border-top:1px dashed var(--line)}
+.bsk .nm{font-size:14px;font-weight:800;letter-spacing:-.02em}
+.bsk .meta{font-size:10.5px;color:var(--sub);margin-top:4px;display:flex;gap:7px;flex-wrap:wrap}
+.bsk .plus{flex:0 0 32px;height:32px;border-radius:10px;background:#17130F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px}
 </style>
 </head>
 <body>
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="app.js?v=21"></script>
-<script type="module" src="sync.js?v=21"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="app.js?v=22"></script>
+<script type="module" src="sync.js?v=22"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>

@@ -1,5 +1,5 @@
-const C='travel-v21';
-const CORE=['./','./index.html','./app.js?v=21','./sync.js?v=21','./places.json?v=4','./manifest.json',
+const C='travel-v22';
+const CORE=['./','./index.html','./app.js?v=22','./sync.js?v=22','./places.json?v=4','./manifest.json',
  './icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png',
  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
  'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css'];
@@ -10,7 +10,7 @@ self.addEventListener('fetch',e=>{
  const u=new URL(e.request.url);
  if(e.request.method!=='GET')return;
  // 지도 타일: 캐시 우선 (오프라인 대비)
- if(u.hostname.includes('basemaps.cartocdn.com')){
+ if(u.hostname.includes('tile.openstreetmap.org')){
   e.respondWith(caches.open('tiles').then(c=>c.match(e.request).then(r=>r||fetch(e.request).then(res=>{c.put(e.request,res.clone());return res}).catch(()=>r))));return}
  // 앱 셸/데이터: 네트워크 우선, 실패 시 캐시
  e.respondWith(fetch(e.request).then(res=>{

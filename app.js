@@ -279,7 +279,14 @@ const todayIso=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezone
 let WD='auto';
 let QT=null, QCOMP=false, TAGOPEN=null;
 let TAB='__trips', DAYI=0, TDI=0, FILT='all', AREA='all', REG='', Q='', LIM=20, PICK=0, FIXFORM=0, mapObj=null, TOAST=null, TT=null;
-const TABS=[['day','📋','하루'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방']];
+const TABS=[['day','📋','하루'],['place','📍','장소'],['money','💰','지갑'],['prep','🎒','가방'],['route','🗺','동선']];
+/* 지도 타일 — 무료 OSM (CartoDB는 API 키를 요구하도록 바뀜) */
+const OSM_URL='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_OPT=()=>({maxZoom:19,attribution:'© OpenStreetMap',crossOrigin:'anonymous'});
+/* 동선 화면 상태 */
+let RDAY=-1, RMAP=null, RTILE=null, RMK=[], BASEOPEN=0, BQ='', BQT=null, BQCOMP=false, RLEAD=null, RRND=null, TIPCNT={on:0,off:0,bon:0,boff:0}, RNOLL=0, BASEOUT=false;
+const DAYCOL=['#e11d48','#2563eb','#059669','#d97706','#7c3aed','#0891b2','#be185d','#4d7c0f'];
+const dayColor=i=>DAYCOL[i%DAYCOL.length];
 const NOWM=()=>{const d=new Date();return d.getHours()*60+d.getMinutes()};
 function toast(t){TOAST=t;clearTimeout(TT);paintToast();TT=setTimeout(()=>{TOAST=null;paintToast()},1900)}
 function paintToast(){let el=document.getElementById('toast');
@@ -289,7 +296,10 @@ function paintToast(){let el=document.getElementById('toast');
 
 /* ══ 액션 ══ */
 const A={
- go:k=>{TAB=k;PICK=0;FIXFORM=0;render()},
+ go:k=>{TAB=k;PICK=0;FIXFORM=0;BASEOPEN=0;render()},
+ rday:i=>{RDAY=i;render()},
+ bq:v=>{BQ=v;if(BQCOMP)return;clearTimeout(BQT);BQT=setTimeout(paintBase,170)},
+ bqComp:(on,v)=>{BQCOMP=!!on;if(!on){if(v!=null)BQ=v;clearTimeout(BQT);BQT=setTimeout(paintBase,60)}},
  edit:()=>{EDIT=EDIT?0:1;PICK=0;FIXFORM=0;render()},
  adv:()=>{ADV=ADV?0:1;render()},
  day:i=>{DAYI=i;PICK=0;FIXFORM=0;render()},
@@ -316,7 +326,7 @@ const A={
  dn:(di,i)=>{const c=T().days[di].cands;if(i<c.length-1){const x=c[i+1];c[i+1]=c[i];c[i]=x;save()}render()},
  visit:(di,pid)=>{const d=T().days[di];d.done[pid]?delete d.done[pid]:d.done[pid]=m2t(NOWM());save();render()},
  chk:(gi,ii)=>{const it=T().prep[gi].items[ii];it.v=it.v?0:1;save();render()},
- open:id=>{S.active=id;DAYI=0;const t=T();REG=t.region||REG;save();
+ open:id=>{S.active=id;DAYI=0;RDAY=-1;const t=T();REG=t.region||REG;save();
   const di=t.days.findIndex(d=>d.iso===todayIso());
   if(di>=0){DAYI=di;TDI=di}else{TDI=0} TAB='day'; render()},
  newtrip:()=>{TAB='__new';render()},
@@ -847,12 +857,319 @@ function drawMap(){const el=document.getElementById('map');if(!el)return;
  const cs=D.cands.map(P).filter(p=>p&&p.ll);
  if(!cs.length){el.innerHTML='<div class="nomap">담은 장소에 좌표가 없습니다</div>';return}
  el.innerHTML='';
- mapObj=L.map(el,{zoomControl:false,attributionControl:false});
- L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(mapObj);
+ mapObj=L.map(el,{zoomControl:false,attributionControl:true});
+ mapObj.attributionControl.setPrefix('');
+ L.tileLayer(OSM_URL,OSM_OPT()).addTo(mapObj);
  cs.forEach((p,i)=>L.marker(p.ll,{icon:L.divIcon({html:'<div class="pin">'+(i+1)+'</div>',className:'',iconSize:[24,24]})}).addTo(mapObj).bindPopup(p.n));
  if(cs.length>1)L.polyline(cs.map(p=>p.ll),{color:'#D9542B',weight:2.5,opacity:.5,dashArray:'5,6'}).addTo(mapObj);
  mapObj.fitBounds(L.latLngBounds(cs.map(p=>p.ll)).pad(.3));
  setTimeout(function(){if(mapObj)mapObj.invalidateSize()},150)}
+
+/* ══════ 동선 ══════ */
+/* 보고 있는 날짜들을 [{di, pts:[장소…]}] 로 — cands 순서 그대로 */
+function routeGroups(t){
+ const out=[];
+ (t.days||[]).forEach(function(d,i){
+  if(RDAY>=0 && i!==RDAY)return;
+  const pts=(d.cands||[]).map(P).filter(function(p){return p&&p.ll&&p.ll.length===2});
+  if(pts.length)out.push({di:i,pts:pts});
+ });
+ return out}
+const baseOf=t=>(t&&t.baseLL&&t.baseLL.length===2)?t.baseLL:null;
+
+function vRoute(){
+ const t=T(); if(!t)return vTripList();
+ if(RDAY>=t.days.length)RDAY=-1;
+ const groups=routeGroups(t), base=baseOf(t);
+ const total=groups.reduce(function(a,g){return a+g.pts.length},0);
+ const noLL=(RDAY>=0?[t.days[RDAY]]:t.days).reduce(function(a,d){
+   return a+(d.cands||[]).map(P).filter(function(p){return p&&!p.ll}).length},0);
+ RNOLL=noLL; TIPCNT={on:0,off:0,bon:0,boff:0}; BASEOUT=false;
+ const label=RDAY<0?'전체 일정':t.days[RDAY].n+' · '+t.days[RDAY].d;
+
+ const bar='<div class="hstack">'+
+  '<span class="rg '+(RDAY<0?'on':'')+'" onclick="A.rday(-1)">전체</span>'+
+  t.days.map(function(d,i){return '<span class="rg '+(RDAY===i?'on':'')+'" onclick="A.rday('+i+')">'+d.n+'</span>'}).join('')+
+  '</div>';
+
+ const bsrow='<div class="rtop">'+
+  '<div class="bs" onclick="openBase()">'+(base
+   ?'<span class="sq"></span><span class="tx">'+esc(t.baseNm||'숙소')+'</span><span class="ed">변경</span>'
+   :'<span class="sq" style="background:#D5CEC4"></span><span class="tx"><em>숙소 위치 지정 — 숙소에서 출발·복귀로 선이 그려집니다</em></span><span class="ed">＋ 지정</span>')+'</div>'+
+  (base?'<div class="rx" onclick="clearBase()">해제</div>':'')+'</div>';
+
+ /* 날짜별 보기면 그 날 하루만, 전체 보기면 시작~종료 */
+ const when=RDAY<0?(t.start+' ~ '+t.end):(t.days[RDAY].iso||t.days[RDAY].d);
+ const shot='<div class="shot" id="rshot">'+
+  '<div class="sh"><b>'+esc(t.title)+' · '+esc(label)+'</b>'+
+   '<em>'+(total?total+'곳':'담은 곳 없음')+(base?' · 숙소 '+esc(cut(t.baseNm||'숙소',14)):'')+' · '+esc(when)+'</em></div>'+
+  '<div id="rmap"></div></div>';
+
+ const list=groups.map(function(g){
+  const col=dayColor(g.di), st=RMKOFF(groups,g.di);
+  return '<div class="rgrp"><i style="background:'+col+'"></i>'+t.days[g.di].n+' · '+t.days[g.di].d+
+    '<em>'+g.pts.length+'곳 · '+totalKmOf(t.days[g.di].cands).toFixed(1)+'km</em></div>'+
+   '<div class="rchips">'+g.pts.map(function(p,i){
+     return '<div class="rchip" onclick="focusPin('+(st+i)+')"><b style="background:'+col+'">'+(i+1)+'</b>'+
+      '<span>'+esc(p.n)+'</span></div>'}).join('')+'</div>'}).join('');
+
+ if(!total&&!base)return bar+bsrow+
+  '<div class="empty">지도에 그릴 후보가 없습니다<br><span class="es"><b>하루</b>나 <b>장소</b> 탭에서 가고 싶은 곳을 담아주세요'+
+   (noLL?'<br>담은 '+noLL+'곳은 좌표가 없어 지도에 표시할 수 없습니다':'')+'</span></div>'+
+  '<div style="height:20px"></div>'+(BASEOPEN?vBaseSheet():'');
+
+ return bar+bsrow+shot+
+  '<div class="savebtn" onclick="saveRouteImg()">⬇︎ 이미지로 저장</div>'+
+  '<div class="savehint" id="rhint">'+routeHint()+'</div>'+
+  list+
+  '<div style="height:20px"></div>'+
+  (BASEOPEN?vBaseSheet():'')}
+
+/* 그룹별 마커 시작 번호 (칩 → 마커 매칭용) */
+function RMKOFF(groups,di){let n=0;
+ for(let k=0;k<groups.length;k++){if(groups[k].di===di)return n;n+=groups[k].pts.length}
+ return n}
+
+/* 라벨 후보 자리 — Leaflet의 direction은 right/left/top/bottom 4개뿐이라
+   대각선은 direction을 right/left로 두고 offset y를 ±16 주는 식으로 만든다. */
+const TIPY=16, TIPDIST=[14,26,40];
+function tipSlots(D){
+ const g=Math.round(D*0.72);
+ return [{d:'right',o:[D,0]},   {d:'left',o:[-D,0]},
+         {d:'top',  o:[0,-D]},  {d:'bottom',o:[0,D]},
+         {d:'right',o:[g,-TIPY]},{d:'right',o:[g,TIPY]},
+         {d:'left', o:[-g,-TIPY]},{d:'left', o:[-g,TIPY]}]}
+function tipRect(s,x,y,w,h){
+ const ox=s.o[0], oy=s.o[1], d=s.d;
+ if(d==='right')return{l:x+ox,     t:y+oy-h/2,r:x+ox+w,  b:y+oy+h/2};
+ if(d==='left') return{l:x+ox-w,   t:y+oy-h/2,r:x+ox,    b:y+oy+h/2};
+ if(d==='top')  return{l:x+ox-w/2, t:y+oy-h,  r:x+ox+w/2,b:y+oy};
+ return               {l:x+ox-w/2, t:y+oy,    r:x+ox+w/2,b:y+oy+h}}
+/* 안쪽(지도 중심 쪽) 방향부터, 같은 등급이면 직선 자리부터 */
+function tipOrder(D,x,W){
+ const inw=x<W/2?'right':'left';
+ return tipSlots(D).map(function(s,i){return{s:s,i:i}}).sort(function(a,b){
+  const rk=function(o){const d=o.s.d;
+   const side=(d===inw)?0:((d==='top'||d==='bottom')?1:2);
+   return side*2+(o.s.o[1]&&(d==='right'||d==='left')?1:0)};
+  return rk(a)-rk(b)||a.i-b.i}).map(function(o){return o.s})}
+/* 라벨에서 핀을 향한 변의 중점 */
+function leadAnchor(d,r){
+ const mx=(r.l+r.r)/2, my=(r.t+r.b)/2;
+ if(d==='right')return[r.l,my];
+ if(d==='left') return[r.r,my];
+ if(d==='top')  return[mx,r.b];
+ return [mx,r.t]}
+const rHit=(a,b)=>!(a.r<=b.l||a.l>=b.r||a.b<=b.t||a.t>=b.b);
+function bindTips(list){
+ TIPCNT={on:0,off:0,bon:0,boff:0};
+ if(RLEAD)RLEAD.clearLayers();
+ if(!RMAP||!list.length)return TIPCNT;
+ const sz=RMAP.getSize(), W=sz.x, H=sz.y, M=2;
+ const pts=list.map(function(o){return RMAP.latLngToContainerPoint(o.mk.getLatLng())});
+ /* 핀 자리를 먼저 장애물로 깔아둔다 (own = 자기 핀은 예외) */
+ const taken=list.map(function(o,i){const h=(o.r||13);
+  return{l:pts[i].x-h,t:pts[i].y-h,r:pts[i].x+h,b:pts[i].y+h,own:i}});
+ list.forEach(function(o,i){
+  const x=pts[i].x, y=pts[i].y;
+  o.mk.unbindTooltip();
+  o.mk.bindTooltip(o.t,{permanent:true,direction:'right',className:'rtip',offset:[14,0],opacity:1});
+  const el=o.mk.getTooltip().getElement();
+  /* 아직 레이아웃 전이라 못 재면 추정치로 — 검사 없이 그냥 두면 겹친다 */
+  let w=el?el.offsetWidth:0, h=el?el.offsetHeight:0;
+  if(!w||!h){w=String(o.t).replace(/&[^;]{1,8};/g,'x').length*7+10; h=16}
+  /* 가까운 거리부터 — 40px을 넘기면 어느 핀의 라벨인지 헷갈린다 */
+  let put=null;
+  for(let di=0;di<TIPDIST.length&&!put;di++){
+   const order=tipOrder(TIPDIST[di],x,W);
+   for(let k=0;k<order.length;k++){
+    const r=tipRect(order[k],x,y,w,h);
+    if(r.l<M||r.t<M||r.r>W-M||r.b>H-M)continue;
+    /* Leaflet이 툴팁 위치를 반올림하므로 1px 여유를 두고 판정한다 */
+    const rq={l:r.l-1,t:r.t-1,r:r.r+1,b:r.b+1};
+    let bad=false;
+    for(let j=0;j<taken.length;j++){if(taken[j].own===i)continue; if(rHit(rq,taken[j])){bad=true;break}}
+    if(bad)continue;
+    put={s:order[k],r:r,far:di>0};break;
+   }
+  }
+  if(put){
+   o.mk.unbindTooltip();
+   o.mk.bindTooltip(o.t,{permanent:true,direction:put.s.d,className:'rtip',offset:put.s.o,opacity:1});
+   put.r.own=-1; taken.push(put.r); o.b?TIPCNT.bon++:TIPCNT.on++;
+   /* 핀에서 떨어진 라벨은 가는 선으로 이어 어느 핀 것인지 알려준다.
+      Canvas 렌더러로 그려야 저장본 좌표가 맞는다. */
+   if(put.far&&RLEAD){
+    const a=leadAnchor(put.s.d,put.r);
+    RLEAD.addLayer(L.polyline([RMAP.containerPointToLatLng([x,y]),RMAP.containerPointToLatLng(a)],
+     {renderer:RRND,color:o.c||'#7C7369',weight:1,opacity:.5,interactive:false}));
+   }
+  }else{o.mk.unbindTooltip(); o.b?TIPCNT.boff++:TIPCNT.off++}
+ });
+ return TIPCNT}
+
+/* 지도 아래 한 줄 안내 — 지도를 다 그린 뒤에야 알 수 있는 것들이라
+   render() 때가 아니라 fitBounds가 끝난 뒤 갱신한다 */
+function routeHint(){
+ const b=['지도와 제목을 PNG로 내려받습니다'];
+ if(RNOLL)b.push('좌표 없는 '+RNOLL+'곳은 지도에 표시되지 않습니다');
+ if(TIPCNT.off)b.push('이름표 '+TIPCNT.off+'곳 생략 (겹침) · 아래 목록에서 확인');
+ if(BASEOUT)b.push('숙소는 지도 밖에 있습니다');
+ return b.join(' · ')}
+function paintRouteHint(){const el=document.getElementById('rhint'); if(el)el.textContent=routeHint()}
+
+function drawRouteMap(){
+ const el=document.getElementById('rmap'); if(!el)return;
+ if(RMAP){RMAP.remove();RMAP=null;RTILE=null}
+ RMK=[];
+ const t=T(); if(!t)return;
+ const groups=routeGroups(t), base=baseOf(t);
+ /* fitBounds는 담은 후보지만으로 — 숙소를 넣으면 숙소가 멀 때 지도가 통째로 넓어져
+    그날 돌 곳들이 구석에 뭉치고 라벨 걸 자리가 사라진다.
+    숙소 마커와 점선은 그대로 그리고, 화면 밖으로 나가면 나가는 대로 둔다. */
+ const all=[]; groups.forEach(function(g){g.pts.forEach(function(p){all.push(p.ll)})});
+ const fitPts=all.length?all:(base?[base]:[]);
+ if(!fitPts.length){el.innerHTML='<div class="nomap">담은 장소에 좌표가 없습니다</div>';return}
+ el.innerHTML='';
+ /* preferCanvas — html2canvas가 leaflet-overlay-pane(SVG)의 transform을 못 따라가서
+    저장본에서 폴리라인이 엉뚱한 곳에 찍힌다. Canvas 렌더러로 그리면 정상. */
+ /* zoomSnap은 기본값(정수) 유지 — 분수 줌을 쓰면 타일 컨테이너에 scale() 변형이 걸리고
+    html2canvas가 그걸 못 따라가서 저장본에 타일이 통째로 빠진다(실측 확인). */
+ RMAP=L.map(el,{zoomControl:false,attributionControl:true,preferCanvas:true});
+ RMAP.attributionControl.setPrefix('');
+ RTILE=L.tileLayer(OSM_URL,OSM_OPT()).addTo(RMAP);
+ const RND=L.canvas({padding:.5}); RRND=RND;
+ RLEAD=L.layerGroup().addTo(RMAP);
+ /* 라벨은 날짜별 보기에서만 — 전체 보기는 겹쳐서 글자가 뭉개진다 */
+ const showTip=RDAY>=0, tips=[];
+
+ groups.forEach(function(g){
+  const col=dayColor(g.di);
+  const line=(base?[base]:[]).concat(g.pts.map(function(p){return p.ll})).concat(base?[base]:[]);
+  if(line.length>1)L.polyline(line,{renderer:RND,color:col,weight:2.5,opacity:.8,dashArray:'6,7',lineCap:'round'}).addTo(RMAP);
+  g.pts.forEach(function(p,i){
+   const mk=L.marker(p.ll,{icon:L.divIcon({className:'',iconSize:[26,26],iconAnchor:[13,13],
+     html:'<div class="rpin" style="background:'+col+'">'+(i+1)+'</div>'})}).addTo(RMAP);
+   if(showTip)tips.push({mk:mk,t:esc(cut(p.n,6)),c:col});
+   mk.bindPopup('<b>'+esc(p.n)+'</b><br>'+t.days[g.di].n+' '+(i+1)+'번'+
+     (p.rt?' · ★ '+p.rt:'')+(p.g?'<br>'+esc(p.g):''));
+   RMK.push(mk);
+  });
+ });
+ if(base){const bm=L.marker(base,{icon:L.divIcon({className:'',iconSize:[20,20],iconAnchor:[10,10],
+    html:'<div class="rbase"></div>'})}).addTo(RMAP);
+  bm.bindPopup('<b>🏨 '+esc(t.baseNm||'숙소')+'</b><br>숙소 기준점');
+  if(showTip)tips.push({mk:bm,t:'🏨 '+esc(cut(t.baseNm||'숙소',6)),r:10,b:1,c:'#17130F'})}
+
+ /* 담은 곳들이 화면을 꽉 채우게 — 여백은 픽셀로 최소만.
+    animate:false 필수 — 줌 애니메이션 중에는 latLngToContainerPoint가
+    이전 뷰 기준으로 나와서 라벨이 엉뚱한 자리에 배치된다. */
+ const fit={padding:showTip?[26,26]:[10,10],maxZoom:17,animate:false};
+ const self=RMAP;
+ const fitNow=function(){
+  if(!RMAP||RMAP!==self)return;
+  RMAP.invalidateSize(false);
+  RMAP.fitBounds(L.latLngBounds(fitPts),fit);
+  BASEOUT=!!base && !RMAP.getBounds().contains(L.latLng(base));
+  bindTips(tips);
+  paintRouteHint()};
+ fitNow();
+ setTimeout(fitNow,160);
+ /* 웹폰트가 늦게 오면 라벨 폭이 커져서 배치가 어긋난다 — 폰트 준비 후 한 번 더 */
+ try{if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){fitNow()})}catch(e){}}
+
+function focusPin(k){
+ const mk=RMK[k]; if(!mk||!RMAP)return;
+ RMAP.setView(mk.getLatLng(),Math.max(RMAP.getZoom(),15),{animate:true});
+ mk.openPopup();
+ const el=document.getElementById('rmap');
+ if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'center'})}
+
+/* ── 숙소 기준점 ── */
+function openBase(){BASEOPEN=1;BQ='';render();
+ setTimeout(function(){const e=document.getElementById('bq');if(e)e.focus()},150)}
+function closeBase(){BASEOPEN=0;BQ='';render()}
+function pickBase(pid){const t=T(),p=P(pid);
+ if(!t||!p||!p.ll)return;
+ t.baseLL=p.ll.slice(); t.baseNm=p.n; t.baseId=p.i;
+ BASEOPEN=0;BQ='';save();toast(p.n+'을(를) 숙소로 지정했습니다');render()}
+function clearBase(){const t=T(); if(!t||!t.baseLL)return;
+ delete t.baseLL;delete t.baseNm;delete t.baseId;
+ save();toast('숙소 지정을 해제했습니다');render()}
+function baseList(){
+ const t=T(); if(!t)return '';
+ const q=BQ.trim().toLowerCase();
+ let L2=DB.filter(function(p){return p.c==='stay'&&p.ll});
+ if(q)L2=L2.filter(function(p){return ((p.n||'')+(p.a||'')+(p.ad||'')+(p.g||'')).toLowerCase().indexOf(q)>=0});
+ else if(t.region)L2=L2.filter(function(p){return p.r===t.region});
+ L2=L2.slice().sort(function(a,b){return (b.rt||0)-(a.rt||0)||(b.rv||0)-(a.rv||0)});
+ if(!L2.length)return '<div class="gnone">'+(q?'검색 결과가 없습니다':'이 지역에 등록된 숙소가 없습니다. 이름으로 검색해보세요.')+'</div>';
+ return '<div class="cnt" style="padding:0 0 6px">'+L2.length+'곳'+(q?'':' · '+esc(t.region||''))+'</div>'+
+  L2.slice(0,40).map(function(p){
+   return '<div class="bsk" onclick="pickBase(\''+p.i+'\')"><div style="flex:1">'+
+    '<div class="nm">🏨 '+esc(p.n)+'</div><div class="meta">'+
+     (p.a?'<span>'+esc(p.a)+'</span>':'')+(p.rt?'<span>★ '+p.rt+'</span>':'')+
+     (p.r&&p.r!==t.region?'<span>'+esc(p.r)+'</span>':'')+'</div></div>'+
+    '<div class="plus">＋</div></div>'}).join('')+
+  (L2.length>40?'<div class="gnone">40곳까지 보여줍니다. 이름으로 검색해주세요.</div>':'')}
+function paintBase(){const b=document.getElementById('basebody'); if(b)b.innerHTML=baseList()}
+function vBaseSheet(){
+ return '<div class="sheetbg" onclick="closeBase()"></div><div class="sheet">'+
+  '<div class="shd">숙소 위치 지정<span onclick="closeBase()">닫기 ✕</span></div>'+
+  '<div class="sbody">'+
+   '<div class="hint" style="margin-bottom:10px">숙소를 정하면 <b>숙소 → 1번 → … → 마지막 → 숙소</b> 로 선이 이어집니다.</div>'+
+   '<div class="srchbox" style="margin:0 0 10px"><input id="bq" value="'+esc(BQ)+'" placeholder="숙소 이름 · 지역 검색"'+
+     ' autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"'+
+     ' oninput="A.bq(this.value)" oncompositionstart="A.bqComp(1)" oncompositionend="A.bqComp(0,this.value)"></div>'+
+   '<div id="basebody">'+baseList()+'</div>'+
+  '</div></div>'}
+
+/* ── 이미지로 저장 ── */
+function waitTiles(){
+ return new Promise(function(res){
+  if(!RTILE||!RTILE.isLoading||!RTILE.isLoading()){setTimeout(res,120);return}
+  let fired=false; const fin=function(){if(fired)return;fired=true;setTimeout(res,120)};
+  RTILE.once('load',fin); setTimeout(fin,4000)})}
+function shotName(){
+ const t=T()||{title:'여행'};
+ const d=RDAY<0?'전체':(RDAY+1)+'일차';
+ return (t.title||'여행').replace(/[\\/:*?"<>|\s]+/g,'_')+'_동선_'+d+'.png'}
+function saveRouteImg(){
+ const node=document.getElementById('rshot'); if(!node)return;
+ if(typeof html2canvas==='undefined'){toast('이미지 기능을 아직 못 불러왔습니다 · 인터넷 연결 확인');return}
+ toast('이미지 만드는 중…');
+ waitTiles().then(function(){
+  return html2canvas(node,{useCORS:true,allowTaint:false,backgroundColor:'#ffffff',
+   scale:Math.min(2,window.devicePixelRatio||1),logging:false,imageTimeout:20000})
+ }).then(function(cv){
+  cv.toBlob(function(b){
+   if(!b){toast('이미지를 만들지 못했습니다');return}
+   downloadBlob(b,shotName())
+  },'image/png')
+ }).catch(function(e){
+  toast('저장 실패 · '+((e&&e.message)||'다시 시도해주세요'))})}
+function downloadBlob(b,name){
+ const a=document.createElement('a');
+ if(typeof a.download!=='undefined'){
+  const u=URL.createObjectURL(b);
+  a.href=u;a.download=name;a.rel='noopener';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u)},5000);
+  toast('이미지를 저장했습니다');return}
+ /* download 속성을 못 쓰는 브라우저: 공유 시트 → 새 탭 순으로 대체 */
+ try{
+  const f=new File([b],name,{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+   navigator.share({files:[f],title:name}).catch(function(){openBlob(b)});return}
+ }catch(e){}
+ openBlob(b)}
+function openBlob(b){
+ const u=URL.createObjectURL(b);
+ const w=window.open(u,'_blank');
+ if(!w)toast('팝업이 막혔습니다 · 팝업 허용 후 다시 시도해주세요');
+ else toast('길게 눌러 이미지를 저장하세요');
+ setTimeout(function(){URL.revokeObjectURL(u)},60000)}
+Object.assign(window,{focusPin,openBase,closeBase,pickBase,clearBase,paintBase,saveRouteImg});
 
 /* ══ 장소 ══ */
 function placeFilter(){
@@ -1265,7 +1582,7 @@ function applyDrop(pid,s,m,beforePid){
 Object.assign(window,{vDay,dayDragBind,applyDrop});
 
 /* ══ 렌더 ══ */
-const V={day:vDay,plan:vDay,today:vDay,place:vPlace,money:vMoney,prep:vPrep,
+const V={day:vDay,plan:vDay,today:vDay,place:vPlace,route:vRoute,money:vMoney,prep:vPrep,
  __trips:vTripList,__new:vNew,__set:vSettings,__arch:vArchive};
 function header(){
  const t=T();
@@ -1273,13 +1590,14 @@ function header(){
  if(TAB==='__set')return{title:'설정',rt:'✕ 닫기',act:'A.back()'};
  if(TAB==='__arch')return{title:'지난 여행 기록',rt:'✕ 닫기',act:'A.trips()'};
  if(TAB==='__trips')return{title:'내 여행',rt:t?'✕ 닫기':'⚙︎ 설정',act:t?'A.back()':'A.settings()'};
- const m={day:t?t.title:'하루',place:'장소',money:'지갑',prep:'가방'};
+ const m={day:t?t.title:'하루',place:'장소',route:'동선',money:'지갑',prep:'가방'};
  const r={day:dday(t),place:REG?REG+' '+DB.filter(p=>p.r===REG).length+'곳':'',
+  route:t?(RDAY<0?'전체 '+t.days.length+'일':t.days[Math.min(RDAY,t.days.length-1)].n):'',
   money:t?'1'+CS_(t.cur).n+'='+rateOf(t.cur).toFixed(2)+'원':'',prep:dday(t)};
  return{title:m[TAB]||'',rt:(r[TAB]?r[TAB]+' · ':'')+'내 여행',act:'A.trips()'}}
 function render(){
  const app=document.getElementById('app'), t=T();
- if(!t&&['day','plan','today','money','prep'].indexOf(TAB)>=0)TAB='__trips';
+ if(!t&&['day','plan','today','route','money','prep'].indexOf(TAB)>=0)TAB='__trips';
  const H=header();
  const showTabs=['__new','__arch'].indexOf(TAB)<0;
  const prevMain=document.getElementById('main');
@@ -1292,9 +1610,11 @@ function render(){
   ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}
   ${PF?vPFForm():''}${NAMEASK?vNameAsk():''}`;
  const m=document.getElementById('main');
- if(['day','place'].indexOf(TAB)>=0)m.scrollTop=sc;
+ if(['day','place','route'].indexOf(TAB)>=0)m.scrollTop=sc;
  document.body.classList.toggle('editing',TAB==='day'&&!!EDIT);
  if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
+ if(TAB==='route')drawRouteMap();
+ else if(RMAP){RMAP.remove();RMAP=null;RTILE=null;RMK=[]}
  if(TAB==='money')calc();
 }
 window.render=render;
