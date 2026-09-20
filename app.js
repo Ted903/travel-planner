@@ -296,13 +296,12 @@ function paintToast(){let el=document.getElementById('toast');
 
 /* ══ 액션 ══ */
 const A={
- go:k=>{TAB=k;PICK=0;FIXFORM=0;BASEOPEN=0;render()},
+ go:k=>{TAB=k;PICK=0;FIXFORM=0;BASEOPEN=0;MOVE=null;render()},
  rday:i=>{RDAY=i;render()},
  bq:v=>{BQ=v;if(BQCOMP)return;clearTimeout(BQT);BQT=setTimeout(paintBase,170)},
  bqComp:(on,v)=>{BQCOMP=!!on;if(!on){if(v!=null)BQ=v;clearTimeout(BQT);BQT=setTimeout(paintBase,60)}},
- edit:()=>{EDIT=EDIT?0:1;PICK=0;FIXFORM=0;render()},
  adv:()=>{ADV=ADV?0:1;render()},
- day:i=>{DAYI=i;PICK=0;FIXFORM=0;render()},
+ day:i=>{DAYI=i;PICK=0;FIXFORM=0;MOVE=null;render()},
  tday:i=>{TDI=i;render()},
  pick:()=>{PICK=!PICK;FIXFORM=0;render()},
  fixform:()=>{FIXFORM=!FIXFORM;PICK=0;render()},
@@ -354,7 +353,7 @@ function createTrip(){
  const members=(mem?mem.split(/[,\u00b7\/\s]+/).filter(Boolean):['나']).map(n=>({n:n,b:mb[n]||0}));
  const t={id:uid(),title,region,cur,start,end,members,budget,split:'even',days,exp:[],docs:[],
   prep:PREP_TPL.map(x=>({g:x.g,items:x.items.map(i=>({t:i.t,s:i.s,v:0}))}))};
- S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='day';EDIT=1;save();
+ S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='day';save();
  toast(days.length+'일 여행을 만들었습니다');render()}
 function delTrip(id){const t=S.trips.find(x=>x.id===id);if(!t)return;
  if(!confirm('"'+t.title+'" 여행을 삭제합니다.\n일정·후보·지출·준비물이 모두 지워집니다. 계속할까요?'))return;
@@ -1377,39 +1376,35 @@ const SECT=[['am','오전','🌤',8*60,12*60],['pm','오후','☀️',12*60,18*6
 const MEALI={bf:'🍳',ln:'🍚',dn:'🍺',sn:'🍡'};
 const MEALN={bf:'아침',ln:'점심',dn:'저녁',sn:'간식'};
 const DEFMEAL={am:['bf'],pm:['ln','sn'],nt:['dn']};
-let EDIT=0, ADV=0;
+let ADV=0;
 
 function secOfTime(m){for(const s of SECT){if(m>=s[3]&&m<s[4])return s[0]}return m<8*60?'am':'nt'}
 function tagS(D,pid){return ((D.tag&&D.tag[pid])||{}).s||''}
 function tagM(D,pid){return ((D.tag&&D.tag[pid])||{}).m||''}
 
-function dayCard(D,p,edit){
+function dayCard(D,p){
  const dn=D.done[p.i], c=CAT[p.c]||CAT.see;
  return '<div class="dcard'+(dn?' dn':'')+'" data-pid="'+p.i+'">'+
-  (edit?'<span class="dh">⠿</span>':'')+
   '<div class="dbody" onclick="A.visit('+DAYI+',\''+p.i+'\')">'+
    '<div class="dnm">'+c.i+' '+esc(p.n)+(dn?'<span class="dvis">✓ '+dn+'</span>':'')+'</div>'+
    '<div class="dmeta">'+(p.rt?'<span>★ '+p.rt+'</span>':'')+'<span>약 '+D2(p.du)+'</span>'+(p.g?'<span>'+esc(p.g)+'</span>':'')+'</div>'+
    (p.m?'<div class="dmemo">📝 '+esc(p.m)+'</div>':'')+
   '</div>'+
-  (edit?'<span class="dx" onclick="event.stopPropagation();A.del('+DAYI+',\''+p.i+'\')">✕</span>':'')+
  '</div>'}
 
-function dayZone(D,s,m,items,edit){
+function dayZone(D,s,m,items){
  const lab=m?(MEALI[m]+' '+MEALN[m]):'그 외';
- const cls=m?'dzone meal':'dzone etc';
- if(!items.length && !edit && m) return '';
+ const cls=(m?'dzone meal':'dzone etc')+(items.length?'':' empty');
  return '<div class="'+cls+'" data-s="'+s+'" data-m="'+m+'">'+
   '<div class="zl">'+lab+(items.length?'<em>'+items.length+'</em>':'')+'</div>'+
-  items.map(p=>dayCard(D,p,edit)).join('')+
-  (items.length?'':'<div class="zempty">'+(edit?'여기로 끌어다 놓기':'비어 있음')+'</div>')+
+  items.map(p=>dayCard(D,p)).join('')+
+  (items.length?'':'<div class="zempty">비어 있음</div>')+
  '</div>'}
 
 function vDay(){
  const t=T(); if(!t)return vTripList();
  const D=t.days[DAYI]||t.days[0];
  D.tag=D.tag||{};
- const edit=!!EDIT;
  const cands=D.cands.map(P).filter(Boolean);
  const G=gapsOf(D), FREE=G.reduce((a,g)=>a+(g.t-g.f),0);
  const fixed=D.fixed.slice().sort((a,b)=>t2m(a.s)-t2m(b.s));
@@ -1422,7 +1417,7 @@ function vDay(){
   let meals=DEFMEAL[key].slice();
   ['bf','ln','dn','sn'].forEach(function(mm){
    if(meals.indexOf(mm)<0 && inSec.some(p=>tagM(D,p.i)===mm))meals.push(mm)});
-  if(edit && meals.indexOf('sn')<0)meals.push('sn');
+  meals=meals.filter(m=>m!=='sn'||inSec.some(p=>tagM(D,p.i)==='sn'));
   const used={}; meals.forEach(m=>used[m]=1);
   const etc=inSec.filter(p=>!used[tagM(D,p.i)]||!tagM(D,p.i));
   const secTot=inSec.reduce((a,p)=>a+p.du,0);
@@ -1430,18 +1425,18 @@ function vDay(){
    '<div class="dsh"><span class="ic">'+sc[2]+'</span><span class="nm">'+sc[1]+'</span>'+
     '<span class="rt">'+(inSec.length?inSec.length+'곳 · '+D2(secTot):'비어 있음')+'</span></div>'+
    fx.map(f=>{const cc=CAT[f.cat]||CAT.see;
-     return '<div class="dfix"><span class="tm">'+f.s+'</span><span class="fn">'+cc.i+' '+esc(f.nm)+'</span>'+
+     return '<div class="dfix" data-fid="'+f.id+'"><span class="tm">'+f.s+'</span><span class="fn">'+cc.i+' '+esc(f.nm)+'</span>'+
       (f.why?'<span class="fw">'+esc(f.why)+'</span>':'')+
-      (edit?'<span class="dx" onclick="delFixed(\''+f.id+'\')">✕</span>':'<span class="lk">🔒</span>')+'</div>'}).join('')+
-   meals.map(m=>dayZone(D,key,m,inSec.filter(p=>tagM(D,p.i)===m),edit)).join('')+
-   dayZone(D,key,'',etc,edit)+
+      '<span class="lk">🔒</span></div>'}).join('')+
+   meals.map(m=>dayZone(D,key,m,inSec.filter(p=>tagM(D,p.i)===m))).join('')+
+   dayZone(D,key,'',etc)+
   '</div>';
  });
  const un=cands.filter(p=>!tagS(D,p.i));
- if(un.length||edit){
+ if(un.length){
   body+='<div class="dsec s-un"><div class="dsh"><span class="ic">📥</span><span class="nm">미배치</span>'+
-   '<span class="rt">'+(un.length?un.length+'곳':'없음')+'</span></div>'+
-   dayZone(D,'','',un,edit)+'</div>';
+   '<span class="rt">'+un.length+'곳</span></div>'+
+   dayZone(D,'','',un)+'</div>';
  }
 
  const fixform=FIXFORM?'<div class="picker"><div class="ph">'+D.n+' · 고정 일정 추가<span onclick="A.fixform()">닫기 ✕</span></div>'+
@@ -1481,94 +1476,100 @@ function vDay(){
 
  return '<div class="hstack">'+t.days.map(function(d,i){
     return '<div class="dc '+(i===DAYI?'on':'')+'" onclick="A.day('+i+')"><div class="n">'+d.n+'</div><div class="d">'+d.d+'</div></div>'}).join('')+'</div>'+
-  '<div class="daybar"><div class="dsum">고정 <b>'+D.fixed.length+'</b> · 담은 곳 <b>'+cands.length+'</b> · 빈 시간 <b>'+D2(FREE)+'</b></div>'+
-   '<div class="ebtn '+(edit?'on':'')+'" onclick="A.edit()">'+(edit?'✓ 완료':'✎ 편집')+'</div></div>'+
-  (edit?'<div class="ehint">카드를 <b>길게 누르면</b> 들어 올려집니다. 원하는 칸으로 끌어다 놓으세요.</div>':'')+
+  '<div class="daybar"><div class="dsum">고정 <b>'+D.fixed.length+'</b> · 담은 곳 <b>'+cands.length+'</b> · 빈 시간 <b>'+D2(FREE)+'</b></div></div>'+
+  '<div class="dhint">카드를 길게 누르면 시간대를 바꿀 수 있어요</div>'+
   dayWarn(t,DAYI)+
   body+
-  (edit?'<div class="addbtn" onclick="A.pick()">'+(PICK?'✕ 닫기':'＋ 장소에서 담기')+'</div>'+picker+
-        '<div class="addbtn dark" onclick="A.fixform()">'+(FIXFORM?'✕ 닫기':'＋ 고정 일정 추가')+'</div>'+fixform:'')+
+  '<div class="addbtn" onclick="A.pick()">'+(PICK?'✕ 닫기':'＋ 장소에서 담기')+'</div>'+picker+
+  '<div class="addbtn dark" onclick="A.fixform()">'+(FIXFORM?'✕ 닫기':'＋ 고정 일정 추가')+'</div>'+fixform+
   '<div class="advtog" onclick="A.adv()">'+(ADV?'▴ 빈 시간 · 동선 지도 닫기':'▾ 빈 시간 · 동선 지도')+'</div>'+adv+
   '<div style="height:20px"></div>'}
 
-/* ── 길게 눌러 드래그 ── */
-let DRAG=null;
+/* ── 길게 눌러 옮기기 ── */
+let MOVE=null;
 function dayDragBind(){
  const root=document.getElementById('main'); if(!root)return;
  root.querySelectorAll('.dcard').forEach(function(el){
-  el.addEventListener('pointerdown',function(e){pressStart(e,el)});
+  const pid=el.getAttribute('data-pid'); if(!pid)return;
+  longBind(el,function(){openMove(pid)})});
+ root.querySelectorAll('.dfix').forEach(function(el){
+  const fid=el.getAttribute('data-fid'); if(!fid)return;
+  longBind(el,function(){openFixMove(fid)})});
+}
+/* 롱프레스 직후의 click(다녀옴 체크) 한 번 삼키기 */
+function eatNextClick(){
+ let tm=0;
+ function off(){document.removeEventListener('click',swallow,true);clearTimeout(tm)}
+ function swallow(ev){ev.stopPropagation();ev.preventDefault();off()}
+ document.addEventListener('click',swallow,true);
+ tm=setTimeout(off,900);
+}
+function longBind(el,fn){
+ el.addEventListener('pointerdown',function(e){
+  if(e.pointerType==='mouse'&&e.button!==0)return;
+  const sx=e.clientX, sy=e.clientY;
+  let timer=setTimeout(function(){
+   timer=0; clear();
+   try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}
+   eatNextClick(); fn();
+  },400);
+  function clear(){
+   document.removeEventListener('pointermove',onMove);
+   document.removeEventListener('pointerup',stop);
+   document.removeEventListener('pointercancel',stop);
+  }
+  function stop(){if(timer){clearTimeout(timer);timer=0}clear()}
+  function onMove(ev){if(Math.abs(ev.clientX-sx)>10||Math.abs(ev.clientY-sy)>10)stop()}
+  document.addEventListener('pointermove',onMove);
+  document.addEventListener('pointerup',stop);
+  document.addEventListener('pointercancel',stop);
  });
 }
-function pressStart(e,el){
- if(!EDIT)return;
- if(e.pointerType==='mouse'&&e.button!==0)return;
- try{const _s=window.getSelection(); _s&&_s.removeAllRanges()}catch(_){}
- function noSel(ev){ev.preventDefault()}
- document.addEventListener('selectstart',noSel);
- const pid=el.getAttribute('data-pid');
- const sx=e.clientX, sy=e.clientY;
- let dragging=false, ghost=null, gx=0, gy=0, timer=null;
- function stopScroll(ev){if(dragging)ev.preventDefault()}
- function clearHi(){document.querySelectorAll('.dzone.hi').forEach(z=>z.classList.remove('hi'));
-  const ln=document.getElementById('dropline'); if(ln)ln.remove()}
- function hi(x,y){
-  clearHi();
-  const under=document.elementFromPoint(x,y); if(!under)return null;
-  const z=under.closest('.dzone'); if(!z)return null;
-  z.classList.add('hi');
-  const cards=[...z.querySelectorAll('.dcard')].filter(c=>c!==el);
-  let before=null;
-  for(const c of cards){const r=c.getBoundingClientRect(); if(y<r.top+r.height/2){before=c;break}}
-  const ln=document.createElement('div'); ln.id='dropline'; ln.className='dropline';
-  if(before)z.insertBefore(ln,before); else z.appendChild(ln);
-  return {z:z,before:before?before.getAttribute('data-pid'):null};
- }
- let target=null;
- function onMove(ev){
-  if(!dragging){
-   if(Math.abs(ev.clientX-sx)>10||Math.abs(ev.clientY-sy)>10){clearTimeout(timer);done(false)}
-   return;
-  }
-  ev.preventDefault();
-  ghost.style.left=(ev.clientX-gx)+'px';
-  ghost.style.top=(ev.clientY-gy)+'px';
-  target=hi(ev.clientX,ev.clientY);
- }
- function onUp(ev){
-  if(dragging&&target){
-   const s=target.z.getAttribute('data-s'), m=target.z.getAttribute('data-m');
-   applyDrop(pid,s,m,target.before);
-  }
-  done(dragging);
- }
- function done(re){
-  clearTimeout(timer);
-  document.removeEventListener('selectstart',noSel);
-  document.removeEventListener('pointermove',onMove);
-  document.removeEventListener('pointerup',onUp);
-  document.removeEventListener('pointercancel',onUp);
-  document.removeEventListener('touchmove',stopScroll);
-  if(ghost)ghost.remove();
-  el.classList.remove('lifted');
-  document.body.classList.remove('dragging');
-  clearHi(); DRAG=null;
-  if(re)render();
- }
- timer=setTimeout(function(){
-  dragging=true; DRAG=pid;
-  try{navigator.vibrate&&navigator.vibrate(12)}catch(_){}
-  const r=el.getBoundingClientRect(); gx=sx-r.left; gy=sy-r.top;
-  ghost=el.cloneNode(true); ghost.className='dcard ghost';
-  ghost.style.width=r.width+'px'; ghost.style.left=r.left+'px'; ghost.style.top=r.top+'px';
-  document.body.appendChild(ghost);
-  el.classList.add('lifted');
-  document.body.classList.add('dragging');
- },380);
- document.addEventListener('pointermove',onMove,{passive:false});
- document.addEventListener('pointerup',onUp);
- document.addEventListener('pointercancel',onUp);
- document.addEventListener('touchmove',stopScroll,{passive:false});
+function openMove(pid){MOVE={k:'p',id:pid};render()}
+function openFixMove(fid){MOVE={k:'f',id:fid};render()}
+function closeMove(){MOVE=null;render()}
+function moveTo(s,m){
+ const mv=MOVE; MOVE=null;
+ if(!mv||mv.k!=='p'){render();return}
+ const D=T().days[DAYI]; D.tag=D.tag||{};
+ if(tagS(D,mv.id)===s&&tagM(D,mv.id)===m){render();return}
+ applyDrop(mv.id,s,m,null); render();
 }
+function moveDel(){const mv=MOVE; MOVE=null; if(!mv){render();return} A.del(DAYI,mv.id)}
+function moveFixDel(){const mv=MOVE; MOVE=null; render(); if(mv)delFixed(mv.id)}
+function vMoveSheet(){
+ const t=T(); if(!t||!MOVE)return '';
+ const D=t.days[DAYI]||t.days[0]; if(!D)return '';
+ if(MOVE.k==='f'){
+  const f=(D.fixed||[]).find(x=>x.id===MOVE.id); if(!f)return '';
+  return '<div class="sheetbg" onclick="closeMove()"></div><div class="sheet">'+
+   '<div class="shd">🔒 '+esc(f.nm)+'<span onclick="closeMove()">닫기 ✕</span></div>'+
+   '<div class="sbody">'+
+    '<div class="mvq">'+esc(f.s)+' 고정 일정입니다</div>'+
+    '<div class="mvb warn" onclick="moveFixDel()">이 고정 일정 삭제</div>'+
+    '<div class="fcancel" onclick="closeMove()">닫기</div>'+
+   '</div></div>';
+ }
+ const p=P(MOVE.id); if(!p)return '';
+ const cs=tagS(D,p.i), cm=tagM(D,p.i), c=CAT[p.c]||CAT.see;
+ function btn(s,m,lab){
+  const on=(cs===s&&cm===m);
+  return '<div class="mvb'+(on?' on':'')+'" onclick="moveTo(\''+s+'\',\''+m+'\')">'+lab+(on?'<em>현재</em>':'')+'</div>'}
+ const secs=SECT.map(function(sc){
+  const key=sc[0];
+  const ms=DEFMEAL[key].slice();
+  if(ms.indexOf('sn')<0)ms.push('sn');
+  return '<div class="mvsec"><div class="mvsl">'+sc[2]+' '+sc[1]+'<span>'+m2t(sc[3])+' ~ '+m2t(sc[4])+'</span></div>'+
+   '<div class="mvrow">'+ms.map(m=>btn(key,m,MEALI[m]+' '+MEALN[m])).join('')+btn(key,'','그 외')+'</div></div>'}).join('');
+ return '<div class="sheetbg" onclick="closeMove()"></div><div class="sheet">'+
+  '<div class="shd">'+c.i+' '+esc(p.n)+'<span onclick="closeMove()">닫기 ✕</span></div>'+
+  '<div class="sbody">'+
+   '<div class="mvq">어디로 옮길까요?</div>'+
+   secs+
+   '<div class="mvsec">'+btn('','','📥 미배치로 보내기')+
+    '<div class="mvb warn" onclick="moveDel()">이 날에서 빼기</div></div>'+
+   '<div class="fcancel" onclick="closeMove()">닫기</div>'+
+  '</div></div>'}
 function applyDrop(pid,s,m,beforePid){
  const D=T().days[DAYI]; D.tag=D.tag||{};
  D.tag[pid]={s:s||'',m:m||''};
@@ -1579,7 +1580,7 @@ function applyDrop(pid,s,m,beforePid){
   c.forEach(function(id,k){const tg=D.tag[id]||{}; if((tg.s||'')===(s||'')&&(tg.m||'')===(m||''))last=k});
   idx=last>=0?last+1:c.length}
  c.splice(idx,0,pid); save(); toast('옮겼습니다')}
-Object.assign(window,{vDay,dayDragBind,applyDrop});
+Object.assign(window,{vDay,dayDragBind,applyDrop,vMoveSheet,openMove,openFixMove,closeMove,moveTo,moveDel,moveFixDel});
 
 /* ══ 렌더 ══ */
 const V={day:vDay,plan:vDay,today:vDay,place:vPlace,route:vRoute,money:vMoney,prep:vPrep,
@@ -1608,10 +1609,9 @@ function render(){
    <div class="hact">${showGear?'<div class="gear" onclick="A.settings()">⚙︎</div>':''}<div class="rt" onclick="${H.act}">${esc(H.rt)}</div></div></header>
   <main id="main" class="${showTabs?'':'notab'}">${(V[TAB]||vTripList)()}</main>
   ${showTabs?`<nav class="tabs">${TABS.map(x=>`<button class="${TAB===x[0]?'on':''}" onclick="A.go('${x[0]}')"><span class="ic">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`:''}
-  ${PF?vPFForm():''}${NAMEASK?vNameAsk():''}`;
+  ${PF?vPFForm():''}${NAMEASK?vNameAsk():''}${MOVE?vMoveSheet():''}`;
  const m=document.getElementById('main');
  if(['day','place','route'].indexOf(TAB)>=0)m.scrollTop=sc;
- document.body.classList.toggle('editing',TAB==='day'&&!!EDIT);
  if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
  if(TAB==='route')drawRouteMap();
  else if(RMAP){RMAP.remove();RMAP=null;RTILE=null;RMK=[]}
