@@ -1477,7 +1477,7 @@ function vDay(){
  return '<div class="hstack">'+t.days.map(function(d,i){
     return '<div class="dc '+(i===DAYI?'on':'')+'" onclick="A.day('+i+')"><div class="n">'+d.n+'</div><div class="d">'+d.d+'</div></div>'}).join('')+'</div>'+
   '<div class="daybar"><div class="dsum">고정 <b>'+D.fixed.length+'</b> · 담은 곳 <b>'+cands.length+'</b> · 빈 시간 <b>'+D2(FREE)+'</b></div></div>'+
-  '<div class="dhint">카드를 길게 누르면 시간대를 바꿀 수 있어요</div>'+
+  '<div class="dhint">카드를 길게 누르면 시간대·순서를 바꿀 수 있어요</div>'+
   dayWarn(t,DAYI)+
   body+
   '<div class="addbtn" onclick="A.pick()">'+(PICK?'✕ 닫기':'＋ 장소에서 담기')+'</div>'+picker+
@@ -1536,6 +1536,26 @@ function moveTo(s,m){
  applyDrop(mv.id,s,m,null); render();
 }
 function moveDel(){const mv=MOVE; MOVE=null; if(!mv){render();return} A.del(DAYI,mv.id)}
+/* 같은 칸(s,m)에 속한 항목들의 D.cands 내 인덱스 목록 */
+function zoneIdx(D,s,m){
+ const out=[];
+ D.cands.forEach(function(pid,i){
+  if(!P(pid))return;
+  const ok=s?(tagS(D,pid)===s&&tagM(D,pid)===m):!tagS(D,pid);
+  if(ok)out.push(i)});
+ return out}
+/* 인덱스 자리는 그대로 두고 내용만 재배열 → 다른 칸은 건드리지 않음 */
+function moveOrder(dir){
+ if(!MOVE||MOVE.k!=='p')return;
+ const D=T().days[DAYI]; D.tag=D.tag||{};
+ const pid=MOVE.id, idx=zoneIdx(D,tagS(D,pid),tagM(D,pid));
+ const list=idx.map(i=>D.cands[i]), k=list.indexOf(pid);
+ if(k<0||list.length<2)return;
+ const nk=dir==='top'?0:dir==='up'?k-1:dir==='dn'?k+1:list.length-1;
+ if(nk<0||nk>=list.length||nk===k)return;
+ list.splice(k,1); list.splice(nk,0,pid);
+ idx.forEach(function(i,n){D.cands[i]=list[n]});
+ save(); render()}
 function moveFixDel(){const mv=MOVE; MOVE=null; render(); if(mv)delFixed(mv.id)}
 function vMoveSheet(){
  const t=T(); if(!t||!MOVE)return '';
@@ -1552,6 +1572,19 @@ function vMoveSheet(){
  }
  const p=P(MOVE.id); if(!p)return '';
  const cs=tagS(D,p.i), cm=tagM(D,p.i), c=CAT[p.c]||CAT.see;
+ const oidx=zoneIdx(D,cs,cm), olist=oidx.map(i=>D.cands[i]);
+ const oi=olist.indexOf(p.i), on=olist.length;
+ const zn=cs?'이 칸에서':'미배치';
+ let ord='';
+ if(oi>=0){
+  const ob=function(dir,lab,dis){
+   return '<div class="mvb'+(dis?' off':'')+'"'+(dis?'':' onclick="moveOrder(\''+dir+'\')"')+'>'+lab+'</div>'};
+  ord='<div class="mvsec"><div class="mvsl">순서<span>'+zn+' '+(oi+1)+'번째 · 총 '+on+'곳</span></div>'+
+   (on<2?'<div class="mvone">이 칸에 혼자 있어요</div>'
+    :'<div class="mvrow four">'+ob('top','⤒ 맨 위',oi===0)+ob('up','↑ 한 칸',oi===0)+
+      ob('dn','한 칸 ↓',oi===on-1)+ob('bot','맨 아래 ⤓',oi===on-1)+'</div>')+
+   '</div>';
+ }
  function btn(s,m,lab){
   const on=(cs===s&&cm===m);
   return '<div class="mvb'+(on?' on':'')+'" onclick="moveTo(\''+s+'\',\''+m+'\')">'+lab+(on?'<em>현재</em>':'')+'</div>'}
@@ -1564,6 +1597,7 @@ function vMoveSheet(){
  return '<div class="sheetbg" onclick="closeMove()"></div><div class="sheet">'+
   '<div class="shd">'+c.i+' '+esc(p.n)+'<span onclick="closeMove()">닫기 ✕</span></div>'+
   '<div class="sbody">'+
+   ord+
    '<div class="mvq">어디로 옮길까요?</div>'+
    secs+
    '<div class="mvsec">'+btn('','','📥 미배치로 보내기')+
@@ -1580,7 +1614,7 @@ function applyDrop(pid,s,m,beforePid){
   c.forEach(function(id,k){const tg=D.tag[id]||{}; if((tg.s||'')===(s||'')&&(tg.m||'')===(m||''))last=k});
   idx=last>=0?last+1:c.length}
  c.splice(idx,0,pid); save(); toast('옮겼습니다')}
-Object.assign(window,{vDay,dayDragBind,applyDrop,vMoveSheet,openMove,openFixMove,closeMove,moveTo,moveDel,moveFixDel});
+Object.assign(window,{vDay,dayDragBind,applyDrop,vMoveSheet,openMove,openFixMove,closeMove,moveTo,moveDel,moveFixDel,moveOrder});
 
 /* ══ 렌더 ══ */
 const V={day:vDay,plan:vDay,today:vDay,place:vPlace,route:vRoute,money:vMoney,prep:vPrep,

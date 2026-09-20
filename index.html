@@ -413,10 +413,14 @@ main.notab{padding-bottom:24px}
 .mvsl{display:flex;align-items:baseline;gap:7px;font-size:12.5px;font-weight:800;color:var(--ink);margin:0 2px 7px}
 .mvsl span{font-size:10.5px;font-weight:700;color:var(--dim)}
 .mvrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mvrow.four{grid-template-columns:repeat(4,1fr);gap:5px}
+.mvrow.four .mvb{font-size:12.5px;padding:13px 2px;gap:2px;letter-spacing:-.04em}
+.mvone{font-size:12.5px;font-weight:700;color:var(--dim);background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px;text-align:center}
 .mvb{display:flex;align-items:center;justify-content:center;gap:4px;min-height:50px;padding:13px 6px;
  background:#fff;border:1px solid var(--line);border-radius:13px;font-size:13.5px;font-weight:800;color:var(--ink);letter-spacing:-.03em;white-space:nowrap}
 .mvb:active{background:#F4F1EB}
 .mvb.on{background:var(--acc2);border-color:var(--acc2);color:#fff}
+.mvb.off{opacity:.35;pointer-events:none}
 .mvb em{font-style:normal;font-size:10px;font-weight:800;opacity:.8;margin-left:2px}
 .mvb.warn{margin-top:7px;color:var(--warn);border-color:#EBD6D1;background:#FCF5F3}
 .advtog{margin:6px 16px 10px;text-align:center;font-size:12.5px;font-weight:800;color:var(--sub);padding:13px;border:1px solid var(--line);border-radius:13px;background:#fff;min-height:46px}
@@ -489,8 +493,8 @@ main.notab{padding-bottom:24px}
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="app.js?v=25"></script>
-<script type="module" src="sync.js?v=25"></script>
+<script src="app.js?v=26"></script>
+<script type="module" src="sync.js?v=26"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
