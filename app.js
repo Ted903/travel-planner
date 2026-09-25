@@ -83,21 +83,44 @@ function refreshFX(){toast('환율 갱신 중…');
 window.refreshFX=refreshFX;
 
 /* ══ 공유 · 동기화 ══ */
-let SYNC={on:false,pushT:null,last:0,status:''};
+let SYNC={on:false,pushT:{},last:0,status:''};
 function shareOf(t){return t&&t.share||null}
 function syncStatus(){const t=T();
  if(!t||!t.share)return '';
  if(!window.FB)return '연결 중';
  return SYNC.status||'동기화 중';}
+/* 올리기 직전에 서버 최신본을 읽어 합친 뒤 올린다 (통째 덮어쓰기로 남의 수정이 지워지지 않게).
+   타이머는 여행별로 두어, 여행을 바꿔도 이전 여행의 대기 중인 저장이 취소되지 않게 한다 */
 function pushSoon(){const t=T();
  if(!t||!t.share||!window.FB)return;
- clearTimeout(SYNC.pushT);
- SYNC.pushT=setTimeout(function(){
-  const tt=T(); if(!tt||!tt.share)return;
-  const payload=JSON.parse(JSON.stringify(tt)); payload.share=tt.share;
-  window.FB.push(tt.share,payload,signer()).then(function(){
-   SYNC.last=Date.now();SYNC.status='저장됨';paintSync()
-  }).catch(function(e){SYNC.status='저장 실패';paintSync()});
+ const id=t.id;
+ clearTimeout(SYNC.pushT[id]);
+ SYNC.pushT[id]=setTimeout(function(){
+  delete SYNC.pushT[id];
+  const t0=S.trips.find(x=>x.id===id); if(!t0||!t0.share)return;
+  const sid=t0.share;
+  function send(tt){
+   const payload=JSON.parse(JSON.stringify(tt)); payload.share=sid;
+   return window.FB.push(sid,payload,signer()).then(function(){
+    SYNC.last=Date.now();SYNC.status='저장됨';paintSync()
+   }).catch(function(e){SYNC.status='저장 실패';paintSync()})}
+  window.FB.pull(sid).then(function(r){
+   /* pull 동안 로컬이 또 바뀌었을 수 있으니 지금의 로컬본을 다시 읽는다 */
+   const i=S.trips.findIndex(x=>x.id===id);
+   if(i<0)return;
+   const loc=S.trips[i]; if(loc.share!==sid)return;
+   if(!r||!r.trip)return send(loc);
+   /* 순서 주의: mergeTrip(서버본, 로컬본) → 로컬이 base (순서·태그·체크는 로컬 우선) */
+   const merged=Object.assign({},mergeTrip(r.trip,loc),{id:id,share:sid});
+   const before=JSON.stringify(loc);
+   S.trips[i]=merged;
+   if(JSON.stringify(merged)!==before){
+    try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+    if(S.active===id)render()}
+   return send(merged);
+  },function(){
+   /* 오프라인 등으로 못 읽으면 예전처럼 그냥 올린다 */
+   const tt=S.trips.find(x=>x.id===id); if(tt&&tt.share===sid)return send(tt)});
  },700)}
 function paintSync(){const el=document.getElementById('syncbadge');if(el)el.textContent=syncStatus()}
 function myName(){try{return localStorage.getItem('travelplanner.me')||''}catch(e){return ''}}
@@ -107,16 +130,19 @@ function devId(){try{let d=localStorage.getItem('travelplanner.dev');
 function signer(){return devId()+'|'+(myName()||'')}
 /* ── 양쪽이 동시에 넣어도 안 사라지게 합치기 ──
    삭제는 '삭제 기록(tomb)'으로 남겨서 되살아나지 않게 한다 */
+/* 값>0: 삭제됨(삭제 시각) · 값<0: 다시 살림(-살린 시각). 합칠 때 더 최근 기록이 이긴다.
+   지우기만 하면 서버의 옛 삭제 기록이 합치기에서 되살아나 다시 담은 게 사라지므로 '살림'도 남긴다 */
 function tombAdd(t,key){t.tomb=t.tomb||{};t.tomb[key]=Date.now()}
-function tombDel(t,key){if(t.tomb)delete t.tomb[key]}
+function tombDel(t,key){if(t.tomb&&t.tomb[key])t.tomb[key]=-Date.now()}
+function dead(tomb,k){return tomb[k]>0}
 function unionById(a,b,tomb,pre){
  const m={}; (a||[]).forEach(x=>m[x.id]=x); (b||[]).forEach(x=>{if(!m[x.id])m[x.id]=x});
- return Object.keys(m).filter(id=>!tomb[pre+id]).map(id=>m[id])}
+ return Object.keys(m).filter(id=>!dead(tomb,pre+id)).map(id=>m[id])}
 function mergeTrip(local,remote){
  const out=JSON.parse(JSON.stringify(remote));
  const tomb={};
  [local.tomb||{},remote.tomb||{}].forEach(function(src){
-  Object.keys(src).forEach(function(k){if(!tomb[k]||src[k]>tomb[k])tomb[k]=src[k]})});
+  Object.keys(src).forEach(function(k){if(!tomb[k]||Math.abs(src[k])>Math.abs(tomb[k]))tomb[k]=src[k]})});
  out.tomb=tomb;
  out.exp=unionById(out.exp,local.exp,tomb,'e:');
  out.docs=unionById(out.docs,local.docs,tomb,'d:');
@@ -124,9 +150,10 @@ function mergeTrip(local,remote){
   const ld=(local.days||[])[i]; if(!ld)return;
   const set=(d.cands||[]).slice();
   (ld.cands||[]).forEach(function(pid){if(set.indexOf(pid)<0)set.push(pid)});
-  d.cands=set.filter(function(pid){return !tomb['c'+i+':'+pid]});
+  d.cands=set.filter(function(pid){return !dead(tomb,'c'+i+':'+pid)});
   d.tag=Object.assign({},ld.tag||{},d.tag||{});
   d.done=Object.assign({},ld.done||{},d.done||{});
+  Object.keys(d.done).forEach(function(pid){if(dead(tomb,'v'+i+':'+pid))delete d.done[pid]});
   d.fixed=unionById(d.fixed,ld.fixed,tomb,'f:').sort(function(a,b){return t2m(a.s)-t2m(b.s)});
  });
  return out}
@@ -134,13 +161,22 @@ function tripSig(t){
  return (t.exp||[]).length+'|'+(t.docs||[]).length+'|'+
   (t.days||[]).map(d=>(d.cands||[]).length+'.'+(d.fixed||[]).length).join(',')}
 function setMe(n){try{localStorage.setItem('travelplanner.me',n)}catch(e){}}
+/* 활성 여행이 바뀌면 항상 호출: 공유 여행이면 그 문서를 구독, 아니면 이전 구독을 끊는다 */
 function startWatch(){
- const t=T(); if(!t||!t.share||!window.FB)return;
+ const t=T();
+ if(!t||!t.share){
+  if(window.FB)window.FB.stop();
+  SYNC.on=false;SYNC.status='';paintSync();return}
+ if(!window.FB){window.addEventListener('fb-ready',startWatch,{once:true});return}
+ SYNC.status='';paintSync();
+ let first=true;
  window.FB.watch(t.share,function(r){
   if(!r||!r.trip)return;
   const cur=T(); if(!cur||cur.share!==t.share)return;
   const mine=(r.updatedBy||'').split('|')[0]===devId();
-  if(mine){SYNC.status='저장됨';paintSync();return}
+  /* 구독 직후 첫 스냅샷은 내가 마지막으로 올린 것이어도 한 번은 합친다 */
+  const wasFirst=first; first=false;
+  if(mine&&!wasFirst){SYNC.status='저장됨';paintSync();return}
   const i=S.trips.findIndex(x=>x.id===cur.id);
   if(i<0)return;
   const keepId=cur.id;
@@ -148,7 +184,7 @@ function startWatch(){
   S.trips[i]=Object.assign({},merged,{id:keepId,share:t.share});
   try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
   const who=(r.updatedBy||'').split('|')[1];
-  SYNC.status=who?(who+' 수정'):'수정됨';
+  SYNC.status=mine?'저장됨':(who?(who+' 수정'):'수정됨');
   if(tripSig(merged)!==tripSig(r.trip)){pushSoon()}
   render();
  });
@@ -323,11 +359,13 @@ const A={
   t.days[di].cands.indexOf(pid)>=0?A.del(di,pid):A.add(di,pid)},
  up:(di,i)=>{const c=T().days[di].cands;if(i>0){const x=c[i-1];c[i-1]=c[i];c[i]=x;save()}render()},
  dn:(di,i)=>{const c=T().days[di].cands;if(i<c.length-1){const x=c[i+1];c[i+1]=c[i];c[i]=x;save()}render()},
- visit:(di,pid)=>{const d=T().days[di];d.done[pid]?delete d.done[pid]:d.done[pid]=m2t(NOWM());save();render()},
+ visit:(di,pid)=>{const t=T(),d=t.days[di];
+  if(d.done[pid]){delete d.done[pid];tombAdd(t,'v'+di+':'+pid)}else{d.done[pid]=m2t(NOWM());tombDel(t,'v'+di+':'+pid)}
+  save();render()},
  chk:(gi,ii)=>{const it=T().prep[gi].items[ii];it.v=it.v?0:1;save();render()},
- open:id=>{S.active=id;DAYI=0;RDAY=-1;const t=T();REG=t.region||REG;save();
+ open:id=>{const sw=S.active!==id;S.active=id;DAYI=0;RDAY=-1;MOVE=null;const t=T();REG=t.region||REG;save();
   const di=t.days.findIndex(d=>d.iso===todayIso());
-  if(di>=0){DAYI=di;TDI=di}else{TDI=0} TAB='day'; render()},
+  if(di>=0){DAYI=di;TDI=di}else{TDI=0} TAB='day'; if(sw)startWatch(); render()},
  newtrip:()=>{TAB='__new';render()},
  settings:()=>{TAB='__set';render()},
  archive:id=>{window.__arch=id;TAB='__arch';render()},
@@ -353,22 +391,25 @@ function createTrip(){
  const members=(mem?mem.split(/[,\u00b7\/\s]+/).filter(Boolean):['나']).map(n=>({n:n,b:mb[n]||0}));
  const t={id:uid(),title,region,cur,start,end,members,budget,split:'even',days,exp:[],docs:[],
   prep:PREP_TPL.map(x=>({g:x.g,items:x.items.map(i=>({t:i.t,s:i.s,v:0}))}))};
- S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='day';save();
+ S.trips.push(t);S.active=t.id;DAYI=0;TDI=0;REG=region||REG;TAB='day';save();startWatch();
  toast(days.length+'일 여행을 만들었습니다');render()}
 function delTrip(id){const t=S.trips.find(x=>x.id===id);if(!t)return;
  if(!confirm('"'+t.title+'" 여행을 삭제합니다.\n일정·후보·지출·준비물이 모두 지워집니다. 계속할까요?'))return;
  S.trips=S.trips.filter(x=>x.id!==id);S.active=S.trips.length?S.trips[0].id:null;
- save();TAB='__trips';toast('삭제했습니다');render()}
+ save();startWatch();TAB='__trips';toast('삭제했습니다');render()}
 function resetTrip(id){const t=S.trips.find(x=>x.id===id);if(!t)return;
  if(!confirm('"'+t.title+'"의 내용만 비웁니다.\n날짜·인원·예산은 그대로 두고 고정 일정·후보·지출·체크만 초기화합니다.'))return;
- t.days.forEach(d=>{d.fixed=[];d.cands=[];d.done={}});t.exp=[];t.docs=[];
+ t.days.forEach((d,di)=>{
+  d.cands.forEach(pid=>tombAdd(t,'c'+di+':'+pid));Object.keys(d.done||{}).forEach(pid=>tombAdd(t,'v'+di+':'+pid));
+  d.fixed.forEach(f=>tombAdd(t,'f:'+f.id));d.fixed=[];d.cands=[];d.done={}});
+ t.exp.forEach(e=>tombAdd(t,'e:'+e.id));t.docs.forEach(x=>tombAdd(t,'d:'+x.id));t.exp=[];t.docs=[];
  t.prep=PREP_TPL.map(x=>({g:x.g,items:x.items.map(i=>({t:i.t,s:i.s,v:0}))}));
  save();toast('내용을 비웠습니다');render()}
 function resetAll(){
  if(!confirm('이 기기에 저장된 모든 여행을 지우고 처음 상태로 되돌립니다.\n계속할까요?'))return;
  if(!confirm('정말 전부 지울까요? 되돌릴 수 없습니다.'))return;
  try{localStorage.removeItem(KEY)}catch(e){}
- load();TAB='__trips';DAYI=0;TDI=0;toast('초기화했습니다');render()}
+ load();startWatch();TAB='__trips';DAYI=0;TDI=0;toast('초기화했습니다');render()}
 Object.assign(window,{createTrip,delTrip,resetTrip,resetAll});
 
 /* ══ 고정 일정 ══ */
@@ -1390,6 +1431,7 @@ function dayCard(D,p){
    '<div class="dmeta">'+(p.rt?'<span>★ '+p.rt+'</span>':'')+'<span>약 '+D2(p.du)+'</span>'+(p.g?'<span>'+esc(p.g)+'</span>':'')+'</div>'+
    (p.m?'<div class="dmemo">📝 '+esc(p.m)+'</div>':'')+
   '</div>'+
+  '<div class="dmore" title="시간대·순서 바꾸기" onclick="event.stopPropagation();openMove(\''+p.i+'\')">⋯</div>'+
  '</div>'}
 
 function dayZone(D,s,m,items){
@@ -1427,7 +1469,8 @@ function vDay(){
    fx.map(f=>{const cc=CAT[f.cat]||CAT.see;
      return '<div class="dfix" data-fid="'+f.id+'"><span class="tm">'+f.s+'</span><span class="fn">'+cc.i+' '+esc(f.nm)+'</span>'+
       (f.why?'<span class="fw">'+esc(f.why)+'</span>':'')+
-      '<span class="lk">🔒</span></div>'}).join('')+
+      '<span class="lk">🔒</span>'+
+      '<div class="dmore" title="고정 일정 메뉴" onclick="event.stopPropagation();openFixMove(\''+f.id+'\')">⋯</div></div>'}).join('')+
    meals.map(m=>dayZone(D,key,m,inSec.filter(p=>tagM(D,p.i)===m))).join('')+
    dayZone(D,key,'',etc)+
   '</div>';
@@ -1477,7 +1520,8 @@ function vDay(){
  return '<div class="hstack">'+t.days.map(function(d,i){
     return '<div class="dc '+(i===DAYI?'on':'')+'" onclick="A.day('+i+')"><div class="n">'+d.n+'</div><div class="d">'+d.d+'</div></div>'}).join('')+'</div>'+
   '<div class="daybar"><div class="dsum">고정 <b>'+D.fixed.length+'</b> · 담은 곳 <b>'+cands.length+'</b> · 빈 시간 <b>'+D2(FREE)+'</b></div></div>'+
-  '<div class="dhint">카드를 길게 누르면 시간대·순서를 바꿀 수 있어요</div>'+
+  '<div class="dhint"><span class="h-touch">카드를 길게 누르면 시간대·순서를 바꿀 수 있어요</span>'+
+   '<span class="h-mouse">카드를 끌어서 옮기거나 ⋯ 를 눌러 시간대·순서를 바꿀 수 있어요</span></div>'+
   dayWarn(t,DAYI)+
   body+
   '<div class="addbtn" onclick="A.pick()">'+(PICK?'✕ 닫기':'＋ 장소에서 담기')+'</div>'+picker+
@@ -1491,7 +1535,7 @@ function dayDragBind(){
  const root=document.getElementById('main'); if(!root)return;
  root.querySelectorAll('.dcard').forEach(function(el){
   const pid=el.getAttribute('data-pid'); if(!pid)return;
-  longBind(el,function(){openMove(pid)})});
+  longBind(el,function(){openMove(pid)},function(e0,ev){mouseDrag(el,pid,e0,ev)})});
  root.querySelectorAll('.dfix').forEach(function(el){
   const fid=el.getAttribute('data-fid'); if(!fid)return;
   longBind(el,function(){openFixMove(fid)})});
@@ -1504,9 +1548,11 @@ function eatNextClick(){
  document.addEventListener('click',swallow,true);
  tm=setTimeout(off,900);
 }
-function longBind(el,fn){
+/* onDrag: 마우스일 때만 — 6px 이상 움직이면 길게 누르기 대신 끌기 시작 */
+function longBind(el,fn,onDrag){
  el.addEventListener('pointerdown',function(e){
   if(e.pointerType==='mouse'&&e.button!==0)return;
+  if(e.pointerType==='mouse'&&e.target.closest&&e.target.closest('.dmore,button,.rm,a,input,select'))return;
   const sx=e.clientX, sy=e.clientY;
   let timer=setTimeout(function(){
    timer=0; clear();
@@ -1519,11 +1565,81 @@ function longBind(el,fn){
    document.removeEventListener('pointercancel',stop);
   }
   function stop(){if(timer){clearTimeout(timer);timer=0}clear()}
-  function onMove(ev){if(Math.abs(ev.clientX-sx)>10||Math.abs(ev.clientY-sy)>10)stop()}
+  function onMove(ev){
+   if(onDrag&&e.pointerType==='mouse'){
+    if(Math.abs(ev.clientX-sx)>=6||Math.abs(ev.clientY-sy)>=6){stop();onDrag(e,ev)}
+    return}
+   if(Math.abs(ev.clientX-sx)>10||Math.abs(ev.clientY-sy)>10)stop()}
   document.addEventListener('pointermove',onMove);
   document.addEventListener('pointerup',stop);
   document.addEventListener('pointercancel',stop);
  });
+}
+/* ── 마우스로 끌어다 놓기 (PC 전용) ── */
+function mouseDrag(el,pid,e0,ev){
+ const main=document.getElementById('main'); if(!main)return;
+ const r=el.getBoundingClientRect(), ox=e0.clientX-r.left, oy=e0.clientY-r.top;
+ const ghost=el.cloneNode(true);
+ ghost.classList.add('ghost'); ghost.style.width=r.width+'px';
+ document.body.appendChild(ghost);
+ el.classList.add('dragging'); document.body.classList.add('dragon');
+ try{el.setPointerCapture(ev.pointerId)}catch(_){}
+ const line=document.createElement('div'); line.className='dropline';
+ let x=ev.clientX, y=ev.clientY, zone=null, before=null, raf=0, done=false;
+ function place(){ghost.style.left=(x-ox)+'px';ghost.style.top=(y-oy)+'px'}
+ function hit(){
+  const t=document.elementFromPoint(x,y);
+  const z=t&&t.closest?t.closest('.dzone'):null;
+  if(z!==zone){if(zone)zone.classList.remove('hi'); zone=z; if(zone)zone.classList.add('hi')}
+  if(!zone){before=null; if(line.parentNode)line.remove(); return}
+  const cards=[].slice.call(zone.querySelectorAll('.dcard')).filter(c=>c.getAttribute('data-pid')!==pid);
+  let top; before=null;
+  for(const c of cards){const cr=c.getBoundingClientRect();
+   if(y<cr.top+cr.height/2){before=c.getAttribute('data-pid'); top=c.offsetTop-5; break}}
+  if(!before){
+   if(cards.length){const c=cards[cards.length-1]; top=c.offsetTop+c.offsetHeight+2}
+   else{const zl=zone.querySelector('.zl'); top=zl?zl.offsetTop+zl.offsetHeight:zone.clientHeight/2}}
+  if(line.parentNode!==zone)zone.appendChild(line);
+  line.style.top=Math.max(0,top)+'px'}
+ /* #main 위·아래 가장자리 70px 안이면 가까울수록 빠르게 스크롤 */
+ function tick(){
+  raf=0; if(done)return;
+  const mr=main.getBoundingClientRect(), nav=document.querySelector('nav.tabs');
+  const top=mr.top, bot=nav?Math.min(mr.bottom,nav.getBoundingClientRect().top):mr.bottom, E=70, MAX=22;
+  let v=0;
+  if(y<top+E)v=-MAX*Math.min(1,(top+E-y)/E);
+  else if(y>bot-E)v=MAX*Math.min(1,(y-(bot-E))/E);
+  if(v){const b=main.scrollTop; main.scrollTop=b+v; if(main.scrollTop!==b)hit(); raf=requestAnimationFrame(tick)}}
+ function kick(){if(!raf)raf=requestAnimationFrame(tick)}
+ function onMove(e){x=e.clientX;y=e.clientY;place();hit();kick()}
+ function onScroll(){if(!done)hit()}
+ function noSel(e){e.preventDefault()}
+ function onKey(e){if(e.key==='Escape'){e.preventDefault();end(false);
+  /* 취소 후 버튼을 뗄 때의 click(다녀옴 체크)도 삼킨다 */
+  document.addEventListener('pointerup',eatNextClick,{once:true,capture:true})}}
+ function end(drop){
+  if(done)return; done=true;
+  if(raf)cancelAnimationFrame(raf);
+  document.removeEventListener('pointermove',onMove);
+  document.removeEventListener('pointerup',onUp);
+  document.removeEventListener('pointercancel',onCancel);
+  document.removeEventListener('keydown',onKey,true);
+  document.removeEventListener('selectstart',noSel,true);
+  main.removeEventListener('scroll',onScroll);
+  ghost.remove(); line.remove(); if(zone)zone.classList.remove('hi');
+  el.classList.remove('dragging'); document.body.classList.remove('dragon');
+  const z=zone;
+  if(drop&&z){applyDrop(pid,z.getAttribute('data-s')||'',z.getAttribute('data-m')||'',before); render()}}
+ function onUp(e){x=e.clientX;y=e.clientY;hit();eatNextClick();end(true)}
+ function onCancel(){end(false)}
+ document.addEventListener('pointermove',onMove);
+ document.addEventListener('pointerup',onUp);
+ document.addEventListener('pointercancel',onCancel);
+ document.addEventListener('keydown',onKey,true);
+ document.addEventListener('selectstart',noSel,true);
+ main.addEventListener('scroll',onScroll,{passive:true});
+ try{window.getSelection().removeAllRanges()}catch(_){}
+ place(); hit(); kick();
 }
 function openMove(pid){MOVE={k:'p',id:pid};render()}
 function openFixMove(fid){MOVE={k:'f',id:fid};render()}

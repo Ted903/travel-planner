@@ -408,6 +408,29 @@ main.notab{padding-bottom:24px}
 .dcard .dvis{font-size:10.5px;font-weight:800;color:var(--acc2);margin-left:7px}
 .dcard .dmeta{font-size:11px;color:var(--sub);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
 .dcard .dmemo{font-size:11.5px;color:#7A5F22;background:#FBF6EC;border-radius:8px;padding:6px 8px;margin-top:6px;line-height:1.45}
+/* ⋯ 버튼 · 마우스 끌기 (PC 전용) */
+.dzone{position:relative}
+.dmore{display:none}
+.dhint .h-mouse{display:none}
+@media (hover:hover) and (pointer:fine){
+ .dhint .h-touch{display:none}
+ .dhint .h-mouse{display:inline}
+ .dcard{cursor:grab}
+ .dmore{display:flex;align-items:center;justify-content:center;flex:0 0 30px;width:30px;height:30px;margin:-4px -4px -4px 0;
+  border-radius:9px;font-size:17px;font-weight:800;line-height:1;color:var(--sub);cursor:pointer;opacity:.35;transition:opacity .12s,background .12s}
+ .dcard:hover .dmore,.dfix:hover .dmore{opacity:1}
+ .dcard .dmore:hover{background:#F4F1EB;color:var(--ink)}
+ .dfix .dmore{color:#fff;margin-left:-2px}
+ .dfix .dmore:hover{background:rgba(255,255,255,.14)}
+}
+.dcard.dragging{opacity:.35}
+.ghost{position:fixed;z-index:200;margin:0;pointer-events:none;cursor:grabbing;opacity:.96;
+ box-shadow:0 12px 28px -6px rgba(23,19,15,.35);border-color:var(--acc2);transform:rotate(1.2deg)}
+.dropline{position:absolute;left:8px;right:8px;height:3px;margin-top:-1.5px;border-radius:3px;background:var(--acc);pointer-events:none;z-index:2}
+.dropline::before,.dropline::after{content:'';position:absolute;top:-3px;width:9px;height:9px;border-radius:50%;background:var(--acc)}
+.dropline::before{left:-4px}.dropline::after{right:-4px}
+.dzone.hi{background:rgba(14,107,94,.07);border-color:var(--acc2);border-style:dashed;opacity:1}
+body.dragon,body.dragon *{cursor:grabbing !important;-webkit-user-select:none !important;user-select:none !important}
 .mvq{font-size:13px;font-weight:800;color:var(--sub);margin:0 2px 12px}
 .mvsec{margin-bottom:14px}
 .mvsl{display:flex;align-items:baseline;gap:7px;font-size:12.5px;font-weight:800;color:var(--ink);margin:0 2px 7px}
@@ -493,8 +516,8 @@ main.notab{padding-bottom:24px}
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="app.js?v=27"></script>
-<script type="module" src="sync.js?v=27"></script>
+<script src="app.js?v=28"></script>
+<script type="module" src="sync.js?v=28"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>
