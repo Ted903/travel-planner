@@ -1824,7 +1824,7 @@ Object.assign(window,{joinByCode,copyCode});
 
 (function boot(){
  load(); loadFXCache();
- fetch('places.json?v=7').then(r=>r.json()).then(function(d){
+ fetch('places.json?v=8').then(r=>r.json()).then(function(d){
   DB=d;
   const t=T();
   const regs=[...new Set(DB.map(p=>p.r))];
