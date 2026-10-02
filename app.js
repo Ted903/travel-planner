@@ -83,7 +83,7 @@ function refreshFX(){toast('환율 갱신 중…');
 window.refreshFX=refreshFX;
 
 /* ══ 공유 · 동기화 ══ */
-let SYNC={on:false,pushT:{},last:0,status:''};
+let SYNC={on:false,pushT:{},dirty:{},last:0,status:''};
 function shareOf(t){return t&&t.share||null}
 function syncStatus(){const t=T();
  if(!t||!t.share)return '';
@@ -94,21 +94,24 @@ function syncStatus(){const t=T();
 function pushSoon(){const t=T();
  if(!t||!t.share||!window.FB)return;
  const id=t.id;
+ /* 아직 서버에 안 올라간 로컬 수정이 있다는 표시 — 이 동안 들어온 스냅샷은 로컬 기준으로 합친다 */
+ SYNC.dirty[id]=1;
  clearTimeout(SYNC.pushT[id]);
  SYNC.pushT[id]=setTimeout(function(){
   delete SYNC.pushT[id];
-  const t0=S.trips.find(x=>x.id===id); if(!t0||!t0.share)return;
+  const t0=S.trips.find(x=>x.id===id); if(!t0||!t0.share){delete SYNC.dirty[id];return}
   const sid=t0.share;
   function send(tt){
    const payload=JSON.parse(JSON.stringify(tt)); payload.share=sid;
    return window.FB.push(sid,payload,signer()).then(function(){
+    if(!SYNC.pushT[id])delete SYNC.dirty[id];
     SYNC.last=Date.now();SYNC.status='저장됨';paintSync()
    }).catch(function(e){SYNC.status='저장 실패';paintSync()})}
   window.FB.pull(sid).then(function(r){
    /* pull 동안 로컬이 또 바뀌었을 수 있으니 지금의 로컬본을 다시 읽는다 */
    const i=S.trips.findIndex(x=>x.id===id);
-   if(i<0)return;
-   const loc=S.trips[i]; if(loc.share!==sid)return;
+   if(i<0){delete SYNC.dirty[id];return}
+   const loc=S.trips[i]; if(loc.share!==sid){delete SYNC.dirty[id];return}
    if(!r||!r.trip)return send(loc);
    /* 순서 주의: mergeTrip(서버본, 로컬본) → 로컬이 base (순서·태그·체크는 로컬 우선) */
    const merged=Object.assign({},mergeTrip(r.trip,loc),{id:id,share:sid});
@@ -180,7 +183,9 @@ function startWatch(){
   const i=S.trips.findIndex(x=>x.id===cur.id);
   if(i<0)return;
   const keepId=cur.id;
-  const merged=mergeTrip(cur,r.trip);
+  /* 보통은 서버본 기준. 단, 내가 바꾼 게 아직 안 올라갔으면(순서·칸 이동 직후 700ms 등)
+     서버본 기준으로 합치면 방금 바꾼 순서가 되돌아가 지도도 옛 순서로 그려지므로 로컬 기준 */
+  const merged=SYNC.dirty[cur.id]?mergeTrip(r.trip,cur):mergeTrip(cur,r.trip);
   S.trips[i]=Object.assign({},merged,{id:keepId,share:t.share});
   try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
   const who=(r.updatedBy||'').split('|')[1];
@@ -240,7 +245,7 @@ function dayWarn(t,i){
      '<div class="ws">다른 날로 옮기거나 빼는 게 좋습니다</div></div>';
  }
  const n=(t.days[i].cands||[]).length;
- if(n>=3) h+='<div class="optbar" onclick="A.opt()">⤢ 동선 순서 정렬 · 현재 '+totalKmOf(t.days[i].cands).toFixed(1)+'km</div>';
+ if(n>=3) h+='<div class="optbar" onclick="A.opt()">⤢ 동선 순서 정렬 · 현재 '+totalKmOf(dayOrder(t.days[i])).toFixed(1)+'km</div>';
  return h;
 }
 
@@ -251,15 +256,21 @@ function totalKmOf(ids){var s=0,prev=null;
  return s}
 function optimizeDay(){
  const t=T(); if(!t)return;
- const D=t.days[DAYI]; const ids=D.cands.slice();
+ const D=t.days[DAYI]; const ids=dayOrder(D);
  if(ids.length<3){toast('후보가 3곳 이상일 때 정렬됩니다');return}
  const pts=ids.map(P).filter(Boolean);
  if(pts.some(p=>!p.ll)){toast('좌표 없는 장소가 있어 정렬할 수 없습니다');return}
  const before=totalKmOf(ids);
- const rest=ids.slice(1), out=[ids[0]]; var cur=P(ids[0]);
- while(rest.length){var bi=0,bd=1e9;
-  for(var i=0;i<rest.length;i++){var d=hav(cur.ll,P(rest[i]).ll); if(d<bd){bd=d;bi=i}}
-  cur=P(rest[bi]); out.push(rest.splice(bi,1)[0])}
+ /* 시간대·식사칸은 사용자가 정한 것이라 그대로 두고, 칸 안에서만 가까운 곳 순으로.
+    앞 칸의 마지막 장소에서 이어서 고른다 (구획이 없으면 예전과 같은 전체 정렬) */
+ const out=[]; var cur=null;
+ dayZoneIds(D).forEach(function(zone){
+  const rest=zone.slice();
+  if(!cur){cur=P(rest[0]); out.push(rest.shift())}
+  while(rest.length){var bi=0,bd=1e9;
+   for(var i=0;i<rest.length;i++){var q=P(rest[i]); var d=(q&&q.ll&&cur&&cur.ll)?hav(cur.ll,q.ll):1e8; if(d<bd){bd=d;bi=i}}
+   const nx=P(rest[bi]); if(nx)cur=nx; out.push(rest.splice(bi,1)[0])}
+ });
  const after=totalKmOf(out);
  if(after>=before-0.05){toast('이미 최적 순서입니다 ('+before.toFixed(1)+'km)');return}
  D.cands=out; save(); render();
@@ -890,11 +901,14 @@ function vPlan(){
   })()||'<div class="empty">아직 담은 후보가 없습니다<br><span class="es">아래 버튼이나 <b>장소</b> 탭에서 담아보세요</span></div>'}
   <div class="addbtn" onclick="A.pick()">${PICK?'✕ 닫기':'＋ 장소에서 후보 담기'}</div>${picker}<div style="height:16px"></div>`;
 }
-function drawMap(){const el=document.getElementById('map');if(!el)return;
- if(mapObj){mapObj.remove();mapObj=null}
+/* 이전 지도는 #map이 남아 있든 render()로 사라졌든 먼저 치운다 */
+function dropMap(){if(mapObj){try{mapObj.remove()}catch(e){} mapObj=null}}
+function dropRouteMap(){if(RMAP){try{RMAP.remove()}catch(e){} RMAP=null} RTILE=null;RMK=[];RLEAD=null}
+function drawMap(){dropMap();
+ const el=document.getElementById('map');if(!el)return;
  const t=T();if(!t)return;
  const D=t.days[DAYI]||t.days[0];
- const cs=D.cands.map(P).filter(p=>p&&p.ll);
+ const cs=dayOrder(D).map(P).filter(p=>p&&p.ll);
  if(!cs.length){el.innerHTML='<div class="nomap">담은 장소에 좌표가 없습니다</div>';return}
  el.innerHTML='';
  mapObj=L.map(el,{zoomControl:false,attributionControl:true});
@@ -902,16 +916,24 @@ function drawMap(){const el=document.getElementById('map');if(!el)return;
  L.tileLayer(OSM_URL,OSM_OPT()).addTo(mapObj);
  cs.forEach((p,i)=>L.marker(p.ll,{icon:L.divIcon({html:'<div class="pin">'+(i+1)+'</div>',className:'',iconSize:[24,24]})}).addTo(mapObj).bindPopup(p.n));
  if(cs.length>1)L.polyline(cs.map(p=>p.ll),{color:'#D9542B',weight:2.5,opacity:.5,dashArray:'5,6'}).addTo(mapObj);
- mapObj.fitBounds(L.latLngBounds(cs.map(p=>p.ll)).pad(.3));
- setTimeout(function(){if(mapObj)mapObj.invalidateSize()},150)}
+ const bounds=L.latLngBounds(cs.map(p=>p.ll)).pad(.3), self=mapObj;
+ mapObj.fitBounds(bounds);
+ /* 막 붙은 컨테이너는 크기가 0일 수 있어 — 크기를 다시 잰 뒤 범위도 다시 맞춘다 */
+ setTimeout(function(){if(mapObj&&mapObj===self){mapObj.invalidateSize(false);mapObj.fitBounds(bounds)}},150)}
+/* 지도 갱신은 여기 한 곳 — render() 끝에서 매번 부른다.
+   담기·빼기·순서·칸 이동·정렬·동기화 병합이 모두 render()를 거치므로
+   지금 보고 있는 일차의 지도는 항상 최신 순서로 새로 그려진다. */
+function refreshMaps(){
+ if(TAB==='day'&&ADV)drawMap(); else dropMap();
+ if(TAB==='route')drawRouteMap(); else dropRouteMap()}
 
 /* ══════ 동선 ══════ */
-/* 보고 있는 날짜들을 [{di, pts:[장소…]}] 로 — cands 순서 그대로 */
+/* 보고 있는 날짜들을 [{di, pts:[장소…]}] 로 — 하루 탭에 보이는 순서 그대로 */
 function routeGroups(t){
  const out=[];
  (t.days||[]).forEach(function(d,i){
   if(RDAY>=0 && i!==RDAY)return;
-  const pts=(d.cands||[]).map(P).filter(function(p){return p&&p.ll&&p.ll.length===2});
+  const pts=dayOrder(d).map(P).filter(function(p){return p&&p.ll&&p.ll.length===2});
   if(pts.length)out.push({di:i,pts:pts});
  });
  return out}
@@ -948,7 +970,7 @@ function vRoute(){
  const list=groups.map(function(g){
   const col=dayColor(g.di), st=RMKOFF(groups,g.di);
   return '<div class="rgrp"><i style="background:'+col+'"></i>'+t.days[g.di].n+' · '+t.days[g.di].d+
-    '<em>'+g.pts.length+'곳 · '+totalKmOf(t.days[g.di].cands).toFixed(1)+'km</em></div>'+
+    '<em>'+g.pts.length+'곳 · '+totalKmOf(dayOrder(t.days[g.di])).toFixed(1)+'km</em></div>'+
    '<div class="rchips">'+g.pts.map(function(p,i){
      return '<div class="rchip" onclick="focusPin('+(st+i)+')"><b style="background:'+col+'">'+(i+1)+'</b>'+
       '<span>'+esc(p.n)+'</span></div>'}).join('')+'</div>'}).join('');
@@ -1059,9 +1081,8 @@ function routeHint(){
 function paintRouteHint(){const el=document.getElementById('rhint'); if(el)el.textContent=routeHint()}
 
 function drawRouteMap(){
+ dropRouteMap();
  const el=document.getElementById('rmap'); if(!el)return;
- if(RMAP){RMAP.remove();RMAP=null;RTILE=null}
- RMK=[];
  const t=T(); if(!t)return;
  const groups=routeGroups(t), base=baseOf(t);
  /* fitBounds는 담은 후보지만으로 — 숙소를 넣으면 숙소가 멀 때 지도가 통째로 넓어져
@@ -1423,6 +1444,38 @@ function secOfTime(m){for(const s of SECT){if(m>=s[3]&&m<s[4])return s[0]}return
 function tagS(D,pid){return ((D.tag&&D.tag[pid])||{}).s||''}
 function tagM(D,pid){return ((D.tag&&D.tag[pid])||{}).m||''}
 
+/* 하루 탭에 보이는 칸 배치 (시간대 → 식사칸 → 그 외, 마지막에 미배치).
+   화면·동선 지도·km·정렬이 모두 이것 하나를 기준으로 한다 —
+   D.cands 원래 순서를 그대로 쓰면 칸을 옮긴 장소가 배열 끝에 남아 지도 번호가 화면과 어긋난다. */
+function dayZones(D){
+ const cands=(D.cands||[]).map(P).filter(Boolean), secs=[];
+ SECT.forEach(function(sc){
+  const key=sc[0];
+  const inSec=cands.filter(p=>tagS(D,p.i)===key);
+  let meals=DEFMEAL[key].slice();
+  ['bf','ln','dn','sn'].forEach(function(mm){
+   if(meals.indexOf(mm)<0 && inSec.some(p=>tagM(D,p.i)===mm))meals.push(mm)});
+  meals=meals.filter(m=>m!=='sn'||inSec.some(p=>tagM(D,p.i)==='sn'));
+  const used={}; meals.forEach(m=>used[m]=1);
+  const zones=meals.map(m=>({s:key,m:m,items:inSec.filter(p=>tagM(D,p.i)===m)}));
+  zones.push({s:key,m:'',items:inSec.filter(p=>!used[tagM(D,p.i)]||!tagM(D,p.i))});
+  secs.push({sc:sc,inSec:inSec,zones:zones});
+ });
+ return {secs:secs,un:cands.filter(p=>!tagS(D,p.i))}}
+/* 칸별 장소 id 목록 — 화면에 안 나오는 것(모르는 id 등)은 맨 뒤 한 칸으로 */
+function dayZoneIds(D){
+ const z=dayZones(D), seen={}, out=[];
+ function take(items){const a=[];
+  items.forEach(function(p){if(!seen[p.i]){seen[p.i]=1;a.push(p.i)}});
+  if(a.length)out.push(a)}
+ z.secs.forEach(function(s){s.zones.forEach(function(zn){take(zn.items)})});
+ take(z.un);
+ const rest=(D.cands||[]).filter(function(pid){if(seen[pid])return false;seen[pid]=1;return true});
+ if(rest.length)out.push(rest);
+ return out}
+/* 화면에 보이는 순서 그대로의 장소 id — 동선 지도 번호·선은 이 순서 */
+function dayOrder(D){return [].concat.apply([],dayZoneIds(D))}
+
 function dayCard(D,p){
  const dn=D.done[p.i], c=CAT[p.c]||CAT.see;
  return '<div class="dcard'+(dn?' dn':'')+'" data-pid="'+p.i+'">'+
@@ -1452,16 +1505,10 @@ function vDay(){
  const fixed=D.fixed.slice().sort((a,b)=>t2m(a.s)-t2m(b.s));
 
  let body='';
- SECT.forEach(function(sc){
-  const key=sc[0];
-  const inSec=cands.filter(p=>tagS(D,p.i)===key);
+ const Z=dayZones(D);
+ Z.secs.forEach(function(z){
+  const sc=z.sc, key=sc[0], inSec=z.inSec;
   const fx=fixed.filter(f=>secOfTime(t2m(f.s))===key);
-  let meals=DEFMEAL[key].slice();
-  ['bf','ln','dn','sn'].forEach(function(mm){
-   if(meals.indexOf(mm)<0 && inSec.some(p=>tagM(D,p.i)===mm))meals.push(mm)});
-  meals=meals.filter(m=>m!=='sn'||inSec.some(p=>tagM(D,p.i)==='sn'));
-  const used={}; meals.forEach(m=>used[m]=1);
-  const etc=inSec.filter(p=>!used[tagM(D,p.i)]||!tagM(D,p.i));
   const secTot=inSec.reduce((a,p)=>a+p.du,0);
   body+='<div class="dsec s-'+key+'">'+
    '<div class="dsh"><span class="ic">'+sc[2]+'</span><span class="nm">'+sc[1]+'</span>'+
@@ -1471,11 +1518,10 @@ function vDay(){
       (f.why?'<span class="fw">'+esc(f.why)+'</span>':'')+
       '<span class="lk">🔒</span>'+
       '<div class="dmore" title="고정 일정 메뉴" onclick="event.stopPropagation();openFixMove(\''+f.id+'\')">⋯</div></div>'}).join('')+
-   meals.map(m=>dayZone(D,key,m,inSec.filter(p=>tagM(D,p.i)===m))).join('')+
-   dayZone(D,key,'',etc)+
+   z.zones.map(zn=>dayZone(D,zn.s,zn.m,zn.items)).join('')+
   '</div>';
  });
- const un=cands.filter(p=>!tagS(D,p.i));
+ const un=Z.un;
  if(un.length){
   body+='<div class="dsec s-un"><div class="dsh"><span class="ic">📥</span><span class="nm">미배치</span>'+
    '<span class="rt">'+un.length+'곳</span></div>'+
@@ -1762,12 +1808,28 @@ function render(){
   ${PF?vPFForm():''}${NAMEASK?vNameAsk():''}${MOVE?vMoveSheet():''}`;
  const m=document.getElementById('main');
  if(['day','place','route'].indexOf(TAB)>=0)m.scrollTop=sc;
- if(TAB==='day'){dayDragBind(); if(ADV)drawMap()}
- if(TAB==='route')drawRouteMap();
- else if(RMAP){RMAP.remove();RMAP=null;RTILE=null;RMK=[]}
+ if(TAB==='day')dayDragBind();
+ refreshMaps();
  if(TAB==='money')calc();
 }
 window.render=render;
+/* 백그라운드에서 돌아오거나 화면 크기가 바뀌면 지도를 다시 잰다·그린다
+   (숨어 있던 동안 동기화로 바뀐 순서도 이때 반영 — 입력 중인 폼은 건드리지 않게 지도만) */
+let MAPRSZ=null;
+function refreshMapsSoon(){clearTimeout(MAPRSZ);MAPRSZ=setTimeout(function(){if(DB.length)refreshMaps()},200)}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')refreshMapsSoon()});
+window.addEventListener('pageshow',function(e){if(e.persisted)refreshMapsSoon()});
+/* 크기 변화는 다시 그리지 않고 다시 재기만 — 모바일은 스크롤로 주소창이 접혀도 resize가 와서
+   매번 새로 그리면 사용자가 옮겨 둔 지도 위치가 날아간다 */
+let MAPSZ=null;
+window.addEventListener('resize',function(){clearTimeout(MAPSZ);MAPSZ=setTimeout(function(){
+ [mapObj,RMAP].forEach(function(m){if(m){try{m.invalidateSize(false)}catch(e){}}})},200)});
+/* 같은 기기의 다른 창(탭)에서 바꾼 내용 */
+window.addEventListener('storage',function(e){
+ if(e.key!==KEY||!e.newValue||!DB.length)return;
+ const was=S.active; load(); if(S.active!==was)startWatch();
+ const a=document.activeElement;
+ if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))refreshMaps(); else render()});
 
 /* ══ 부팅 ══ */
 let NAMEASK=0;
