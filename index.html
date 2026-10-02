@@ -405,6 +405,8 @@ main.notab{padding-bottom:24px}
 .dcard.dn .dnm{text-decoration:line-through}
 .dcard .dbody{flex:1;min-width:0}
 .dcard .dnm{font-size:14.5px;font-weight:800;letter-spacing:-.02em;line-height:1.35}
+.dcard .dnum{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--acc);color:#fff;font-size:10.5px;font-weight:800;letter-spacing:0;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.28);margin-right:6px;vertical-align:2px;flex:none;cursor:pointer;text-decoration:none}
+.dcard .dnum.off{background:#E4DED5;color:#9A9188;box-shadow:none;cursor:default}
 .dcard .dvis{font-size:10.5px;font-weight:800;color:var(--acc2);margin-left:7px}
 .dcard .dmeta{font-size:11px;color:var(--sub);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap}
 .dcard .dmemo{font-size:11.5px;color:#7A5F22;background:#FBF6EC;border-radius:8px;padding:6px 8px;margin-top:6px;line-height:1.45}
@@ -516,8 +518,8 @@ body.dragon,body.dragon *{cursor:grabbing !important;-webkit-user-select:none !i
 <div id="app"><div class="loading">불러오는 중…</div></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="app.js?v=33"></script>
-<script type="module" src="sync.js?v=33"></script>
+<script src="app.js?v=34"></script>
+<script type="module" src="sync.js?v=34"></script>
 <script>
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js'))}
 </script>

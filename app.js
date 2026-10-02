@@ -902,19 +902,31 @@ function vPlan(){
   <div class="addbtn" onclick="A.pick()">${PICK?'✕ 닫기':'＋ 장소에서 후보 담기'}</div>${picker}<div style="height:16px"></div>`;
 }
 /* 이전 지도는 #map이 남아 있든 render()로 사라졌든 먼저 치운다 */
-function dropMap(){if(mapObj){try{mapObj.remove()}catch(e){} mapObj=null}}
+function dropMap(){if(mapObj){try{mapObj.remove()}catch(e){} mapObj=null} MAPMK={}}
+/* 하루 탭 지도에 찍히는 장소 — 화면 순서(dayOrder) 중 좌표 있는 것만. 핀 번호 = 이 배열 순번+1.
+   카드 번호 배지도 이것 하나로 계산해야 지도와 어긋나지 않는다 */
+function pinList(D){return dayOrder(D).map(P).filter(p=>p&&p.ll)}
+function pinNums(D){const n={}; pinList(D).forEach((p,i)=>{n[p.i]=i+1}); return n}
+let MAPMK={};
+/* 카드 번호 배지 → 지도의 같은 번호 핀 팝업 (지도가 열려 있을 때만) */
+function focusDayPin(pid){
+ const mk=MAPMK[pid]; if(!mk||!mapObj)return;
+ const el=document.getElementById('map');
+ if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'center'});
+ mapObj.panTo(mk.getLatLng(),{animate:true}); mk.openPopup()}
+window.focusDayPin=focusDayPin;
 function dropRouteMap(){if(RMAP){try{RMAP.remove()}catch(e){} RMAP=null} RTILE=null;RMK=[];RLEAD=null}
 function drawMap(){dropMap();
  const el=document.getElementById('map');if(!el)return;
  const t=T();if(!t)return;
  const D=t.days[DAYI]||t.days[0];
- const cs=dayOrder(D).map(P).filter(p=>p&&p.ll);
+ const cs=pinList(D);
  if(!cs.length){el.innerHTML='<div class="nomap">담은 장소에 좌표가 없습니다</div>';return}
  el.innerHTML='';
  mapObj=L.map(el,{zoomControl:false,attributionControl:true});
  mapObj.attributionControl.setPrefix('');
  L.tileLayer(OSM_URL,OSM_OPT()).addTo(mapObj);
- cs.forEach((p,i)=>L.marker(p.ll,{icon:L.divIcon({html:'<div class="pin">'+(i+1)+'</div>',className:'',iconSize:[24,24]})}).addTo(mapObj).bindPopup(p.n));
+ cs.forEach((p,i)=>{MAPMK[p.i]=L.marker(p.ll,{icon:L.divIcon({html:'<div class="pin">'+(i+1)+'</div>',className:'',iconSize:[24,24]})}).addTo(mapObj).bindPopup(p.n)});
  if(cs.length>1)L.polyline(cs.map(p=>p.ll),{color:'#D9542B',weight:2.5,opacity:.5,dashArray:'5,6'}).addTo(mapObj);
  const bounds=L.latLngBounds(cs.map(p=>p.ll)).pad(.3), self=mapObj;
  mapObj.fitBounds(bounds);
@@ -1476,23 +1488,26 @@ function dayZoneIds(D){
 /* 화면에 보이는 순서 그대로의 장소 id — 동선 지도 번호·선은 이 순서 */
 function dayOrder(D){return [].concat.apply([],dayZoneIds(D))}
 
-function dayCard(D,p){
- const dn=D.done[p.i], c=CAT[p.c]||CAT.see;
+function dayCard(D,p,nums){
+ const dn=D.done[p.i], c=CAT[p.c]||CAT.see, no=nums&&nums[p.i];
+ /* 지도 핀과 같은 번호 — 좌표가 없어 지도에 안 찍히는 곳은 흐린 – */
+ const badge=no?'<span class="dnum" onclick="event.stopPropagation();focusDayPin(\''+p.i+'\')">'+no+'</span>'
+  :'<span class="dnum off" title="좌표가 없어 지도에 표시되지 않습니다">–</span>';
  return '<div class="dcard'+(dn?' dn':'')+'" data-pid="'+p.i+'">'+
   '<div class="dbody" onclick="A.visit('+DAYI+',\''+p.i+'\')">'+
-   '<div class="dnm">'+c.i+' '+esc(p.n)+(dn?'<span class="dvis">✓ '+dn+'</span>':'')+'</div>'+
+   '<div class="dnm">'+badge+c.i+' '+esc(p.n)+(dn?'<span class="dvis">✓ '+dn+'</span>':'')+'</div>'+
    '<div class="dmeta">'+(p.rt?'<span>★ '+p.rt+'</span>':'')+'<span>약 '+D2(p.du)+'</span>'+(p.g?'<span>'+esc(p.g)+'</span>':'')+'</div>'+
    (p.m?'<div class="dmemo">📝 '+esc(p.m)+'</div>':'')+
   '</div>'+
   '<div class="dmore" title="시간대·순서 바꾸기" onclick="event.stopPropagation();openMove(\''+p.i+'\')">⋯</div>'+
  '</div>'}
 
-function dayZone(D,s,m,items){
+function dayZone(D,s,m,items,nums){
  const lab=m?(MEALI[m]+' '+MEALN[m]):'그 외';
  const cls=(m?'dzone meal':'dzone etc')+(items.length?'':' empty');
  return '<div class="'+cls+'" data-s="'+s+'" data-m="'+m+'">'+
   '<div class="zl">'+lab+(items.length?'<em>'+items.length+'</em>':'')+'</div>'+
-  items.map(p=>dayCard(D,p)).join('')+
+  items.map(p=>dayCard(D,p,nums)).join('')+
   (items.length?'':'<div class="zempty">비어 있음</div>')+
  '</div>'}
 
@@ -1505,7 +1520,7 @@ function vDay(){
  const fixed=D.fixed.slice().sort((a,b)=>t2m(a.s)-t2m(b.s));
 
  let body='';
- const Z=dayZones(D);
+ const Z=dayZones(D), NUMS=pinNums(D);
  Z.secs.forEach(function(z){
   const sc=z.sc, key=sc[0], inSec=z.inSec;
   const fx=fixed.filter(f=>secOfTime(t2m(f.s))===key);
@@ -1518,14 +1533,14 @@ function vDay(){
       (f.why?'<span class="fw">'+esc(f.why)+'</span>':'')+
       '<span class="lk">🔒</span>'+
       '<div class="dmore" title="고정 일정 메뉴" onclick="event.stopPropagation();openFixMove(\''+f.id+'\')">⋯</div></div>'}).join('')+
-   z.zones.map(zn=>dayZone(D,zn.s,zn.m,zn.items)).join('')+
+   z.zones.map(zn=>dayZone(D,zn.s,zn.m,zn.items,NUMS)).join('')+
   '</div>';
  });
  const un=Z.un;
  if(un.length){
   body+='<div class="dsec s-un"><div class="dsh"><span class="ic">📥</span><span class="nm">미배치</span>'+
    '<span class="rt">'+un.length+'곳</span></div>'+
-   dayZone(D,'','',un)+'</div>';
+   dayZone(D,'','',un,NUMS)+'</div>';
  }
 
  const fixform=FIXFORM?'<div class="picker"><div class="ph">'+D.n+' · 고정 일정 추가<span onclick="A.fixform()">닫기 ✕</span></div>'+
@@ -1598,7 +1613,7 @@ function eatNextClick(){
 function longBind(el,fn,onDrag){
  el.addEventListener('pointerdown',function(e){
   if(e.pointerType==='mouse'&&e.button!==0)return;
-  if(e.pointerType==='mouse'&&e.target.closest&&e.target.closest('.dmore,button,.rm,a,input,select'))return;
+  if(e.pointerType==='mouse'&&e.target.closest&&e.target.closest('.dmore,.dnum,button,.rm,a,input,select'))return;
   const sx=e.clientX, sy=e.clientY;
   let timer=setTimeout(function(){
    timer=0; clear();
